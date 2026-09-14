@@ -233,6 +233,13 @@ from a broken feed.
 
 Creating a subscription needs the Standard plan or above.
 
+> `verifyWebhookSignature` uses WebCrypto via `globalThis.crypto`, so it works unchanged in
+> Deno, Bun, Workers and browsers. **Node 18 does not expose `globalThis.crypto`** — on 18,
+> pass it in: `import { webcrypto } from "node:crypto"` then
+> `verifyWebhookSignature({ body, signature, secret, crypto: webcrypto })`. Node 19+ needs
+> nothing. Without it the call throws with that instruction rather than returning a wrong
+> answer.
+
 ```ts
 const hook = await pe.webhooks.create({
   url: "https://example.com/pe-hook",

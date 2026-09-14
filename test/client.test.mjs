@@ -9,6 +9,10 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+// Node 18 does not expose globalThis.crypto, so a bare `crypto` here is a ReferenceError
+// on the floor this package declares in "engines". Import WebCrypto explicitly and the
+// same test proves the same thing on 18, 20 and 22.
+import { webcrypto as crypto } from "node:crypto";
 
 import {
   PuntersEdge, buildQuery, verifyWebhookSignature,
