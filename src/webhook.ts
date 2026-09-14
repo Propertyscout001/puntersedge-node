@@ -33,8 +33,9 @@
  * });
  * ```
  *
- * Uses WebCrypto, so it runs unchanged on Node 18+, Deno, Bun, Cloudflare Workers and in the
- * browser, with no dependency on `node:crypto`.
+ * Uses WebCrypto, so it runs unchanged on Node 19+, Deno, Bun, Cloudflare Workers and in the
+ * browser, with no dependency on `node:crypto`. Node 18 is the one exception: it has no
+ * `globalThis.crypto`, so pass `crypto: webcrypto` from `node:crypto` there.
  */
 
 export interface VerifyOptions {
@@ -91,8 +92,9 @@ export async function verifyWebhookSignature(options: VerifyOptions): Promise<bo
   const subtle = (options.crypto ?? globalThis.crypto)?.subtle;
   if (!subtle) {
     throw new Error(
-      "No WebCrypto available. Use Node 18 or later, or pass one: " +
-      "verifyWebhookSignature({ crypto, ... }).",
+      "No WebCrypto available. Node 19+, Deno, Bun, Workers and browsers have it as a " +
+      "global; Node 18 does not, so pass one: import { webcrypto } from 'node:crypto' " +
+      "then verifyWebhookSignature({ crypto: webcrypto, ... }).",
     );
   }
 

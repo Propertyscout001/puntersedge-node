@@ -461,15 +461,15 @@ test("verifyWebhookSignature accepts a genuine signature", async () => {
   const body = '{"event":"race.odds_open","race_id":"abc"}';
   const secret = "whsec_test";
   const hex = await sign(body, secret);
-  assert.equal(await verifyWebhookSignature({ body, signature: `sha256=${hex}`, secret }), true);
-  assert.equal(await verifyWebhookSignature({ body, signature: hex, secret }), true);
+  assert.equal(await verifyWebhookSignature({ crypto, body, signature: `sha256=${hex}`, secret }), true);
+  assert.equal(await verifyWebhookSignature({ crypto, body, signature: hex, secret }), true);
 });
 
 test("verifyWebhookSignature rejects a tampered body", async () => {
   const secret = "whsec_test";
   const hex = await sign('{"event":"race.odds_open"}', secret);
   assert.equal(
-    await verifyWebhookSignature({ body: '{"event":"race.odds_closed"}', signature: `sha256=${hex}`, secret }),
+    await verifyWebhookSignature({ crypto, body: '{"event":"race.odds_closed"}', signature: `sha256=${hex}`, secret }),
     false,
   );
 });
@@ -477,10 +477,10 @@ test("verifyWebhookSignature rejects a tampered body", async () => {
 test("verifyWebhookSignature rejects the wrong secret, and returns false rather than throwing", async () => {
   const body = "{}";
   const hex = await sign(body, "right");
-  assert.equal(await verifyWebhookSignature({ body, signature: hex, secret: "wrong" }), false);
-  assert.equal(await verifyWebhookSignature({ body, signature: null, secret: "right" }), false);
-  assert.equal(await verifyWebhookSignature({ body, signature: "not-hex", secret: "right" }), false);
-  assert.equal(await verifyWebhookSignature({ body, signature: "sha256=", secret: "right" }), false);
+  assert.equal(await verifyWebhookSignature({ crypto, body, signature: hex, secret: "wrong" }), false);
+  assert.equal(await verifyWebhookSignature({ crypto, body, signature: null, secret: "right" }), false);
+  assert.equal(await verifyWebhookSignature({ crypto, body, signature: "not-hex", secret: "right" }), false);
+  assert.equal(await verifyWebhookSignature({ crypto, body, signature: "sha256=", secret: "right" }), false);
 });
 
 test("verifyWebhookSignature takes bytes as well as a string", async () => {
@@ -488,8 +488,8 @@ test("verifyWebhookSignature takes bytes as well as a string", async () => {
   const secret = "whsec_test";
   const hex = await sign(body, secret);
   const bytes = new TextEncoder().encode(body);
-  assert.equal(await verifyWebhookSignature({ body: bytes, signature: hex, secret }), true);
-  assert.equal(await verifyWebhookSignature({ body: bytes.buffer, signature: hex, secret }), true);
+  assert.equal(await verifyWebhookSignature({ crypto, body: bytes, signature: hex, secret }), true);
+  assert.equal(await verifyWebhookSignature({ crypto, body: bytes.buffer, signature: hex, secret }), true);
 });
 
 test("a 429 whose detail is an object still produces a readable message", async () => {
