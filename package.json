@@ -65,7 +65,7 @@
     "build:cjs": "tsc -p tsconfig.cjs.json && node scripts/finish-cjs.mjs",
     "clean": "rm -rf dist",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test \"test/**/*.test.mjs\"",
+    "test": "node --test test/*.test.mjs",
     "types:generate": "python3 scripts/generate-types.py",
     "prepublishOnly": "npm run typecheck && npm test",
     "pretest": "npm run build"
