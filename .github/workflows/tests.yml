@@ -1,0 +1,40 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A superseded run tells you nothing useful and these are cheap to restart.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 18 is the floor declared in package.json "engines". 22 is here because
+        # `node --test test/` — the old test script — resolved the bare directory as a
+        # module on 22 and failed before running anything, while passing on 18 and 20.
+        # A floor that nothing executes is not a floor, and neither is a ceiling.
+        node: ["18", "20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # `test` has a pretest that builds, and the suite imports from dist/ — so this
+      # exercises the built artifact, not the source tree. contract.test.mjs additionally
+      # checks every call against the API's own OpenAPI document.
+      - run: npm test

@@ -1,23 +1,31 @@
 {
   "name": "puntersedge",
   "version": "1.0.2",
-  "description": "Official TypeScript/JavaScript client for the PuntersEdge Odds API — Australian and New Zealand racing odds (thoroughbred, greyhound, harness) and Australian sports odds from 14 bookmakers, with results, form, market movement and signed webhooks.",
+  "description": "Australian odds API client for TypeScript and JavaScript — horse, greyhound and harness racing odds plus AFL, NRL and other sports odds from 14 Australian bookmakers, with best-price comparison, results, form, market movement and signed webhooks. AU and NZ.",
   "keywords": [
-    "odds",
     "odds-api",
-    "horse-racing",
+    "odds-comparison",
+    "racing-data",
+    "thoroughbred",
+    "odds-feed",
+    "closing-line",
+    "betting-api",
     "greyhound-racing",
     "harness-racing",
+    "line-movement",
+    "horse-racing",
     "sports-odds",
-    "betting",
-    "australia",
-    "new-zealand",
+    "bookmaker",
+    "betting-odds",
     "afl",
     "nrl",
+    "australia",
+    "new-zealand",
+    "sportsbet",
     "typescript",
     "puntersedge"
   ],
-  "homepage": "https://puntersedge.online/api",
+  "homepage": "https://puntersedge.online/api?utm_source=node_sdk&utm_medium=npm",
   "bugs": {
     "url": "https://github.com/Propertyscout001/puntersedge-node/issues",
     "email": "hello@puntersedge.online"
@@ -57,9 +65,10 @@
     "build:cjs": "tsc -p tsconfig.cjs.json && node scripts/finish-cjs.mjs",
     "clean": "rm -rf dist",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test test/",
+    "test": "node --test \"test/**/*.test.mjs\"",
     "types:generate": "python3 scripts/generate-types.py",
-    "prepublishOnly": "npm run typecheck && npm run build && npm test"
+    "prepublishOnly": "npm run typecheck && npm test",
+    "pretest": "npm run build"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

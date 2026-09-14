@@ -1,13 +1,15 @@
-# puntersedge
+# puntersedge — Australian odds API client for TypeScript and JavaScript
 
-Official TypeScript/JavaScript client for the [PuntersEdge Odds API](https://puntersedge.online/api)
-— Australian and New Zealand racing (thoroughbred, greyhound, harness) and Australian sports odds
-from 14 Australian bookmakers, with settled results, form, a permanent market-movement archive and
-signed webhooks.
+Official TypeScript/JavaScript client for the [PuntersEdge odds API](https://puntersedge.online/api?utm_source=node_sdk&utm_medium=npm)
+— Australian and New Zealand **racing** odds (AU thoroughbred, greyhound, harness; NZ thoroughbred
+and harness) and Australian **sports** odds, priced per bookmaker, with best-price comparison,
+settled results, form, a permanent market-movement archive and signed webhooks.
 
 ```bash
 npm install puntersedge
 ```
+
+Python? `pip install puntersedge` — [same endpoints, same design](https://pypi.org/project/puntersedge/).
 
 ```ts
 import { PuntersEdge } from "puntersedge";
@@ -31,6 +33,38 @@ console.log(`${pe.credits?.remaining} credits left`);
 - **Fully typed.** Every response type is generated from the live OpenAPI document, so the types
   cannot quietly drift from the server.
 - **Errors are typed.** A 402 is not a 429 is not a 422, and each carries what you need to act on it.
+
+## What is actually covered
+
+These numbers are recomputed every 30 minutes and published at
+[puntersedge.online/coverage-report.json](https://puntersedge.online/coverage-report.json). Read that
+rather than this paragraph; the snapshot below was measured **14 Sep 2026 23:06 UTC**.
+
+- **14 Australian bookmakers on racing** — the keys the API returns are `tab`, `tabtouch`,
+  `betdeluxe`, `betr_au`, `pointsbetau`, `betright`, `playup`, `palmerbet`, `unibet`, `neds`,
+  `ladbrokes_au`, `sportsbet`, `betgold`, `boostbet`. Median books quoting an AU race: **14**
+  (mean 13.18) over 1,539 races in the 7-day window.
+- **Racing** — AU thoroughbred, harness and greyhound; NZ thoroughbred and harness. There are **no
+  NZ greyhounds**. Races in other countries show up only because an AU book lists the meeting: the
+  median there is one book, which is not coverage.
+- **Sports** — `afl`, `aflw`, `nrl`, `nrlw`, `nba`, `wnba`, `nfl`, `ncaaf`, `mlb`, `nhl`, `mma`,
+  `tennis_atp`, `tennis_wta`, `cricket_test`, `cricket_other`, `rugby_union`, `super_league`,
+  `soccer_epl`, `soccer_other`, `basketball_other`. **Sports depth is materially thinner than
+  racing** — fewer books quote a fixture than quote a race. Check before you build on it.
+
+### What is not here
+
+- **Betfair Exchange and Pinnacle are excluded.** Betfair is ingested for internal reference only and
+  withheld from every customer response pending a Betfair data licence; Pinnacle is a non-Australian
+  reference book outside the AU comparison set. There are no exchange prices in any response.
+- **`racing.nextToGo()` is not AU-only.** Pass `country: "AU"` unless you want everything an AU book
+  happens to list.
+- **`racing.closingLines()` is plan-gated** and returns 403 on the free tier.
+  `racing.priceHistory()` is the free equivalent.
+- **`racing.movers()` direction is `"firming"` or `"drifting"`** — not "in"/"out".
+
+Bookmaker names above are identifiers for publicly posted prices. PuntersEdge is not affiliated with,
+endorsed by, or an agent of any bookmaker.
 
 ## Get a key
 
@@ -305,9 +339,14 @@ parameter name that the server silently ignores while returning a cheerful 200.
 
 ## Also available
 
-- **Python** — [`puntersedge`](https://pypi.org/project/puntersedge/) on PyPI, same design.
-- **MCP server** — [`puntersedge-mcp`](https://pypi.org/project/puntersedge-mcp/), for Claude,
-  Cursor and other agent hosts. See [/developers/mcp-server](https://puntersedge.online/developers/mcp-server).
+- **Python** — `pip install puntersedge` ([PyPI](https://pypi.org/project/puntersedge/)), same
+  endpoints, same design.
+- **MCP server** — `pip install puntersedge-mcp` ([PyPI](https://pypi.org/project/puntersedge-mcp/)),
+  the fuller of the two servers, for Claude, Cursor and other agent hosts. A TypeScript MCP server
+  also exists and installs straight from GitHub with
+  `npx -y github:Propertyscout001/puntersedge-mcp`. **There is no npm package called
+  `puntersedge-mcp`** — `npm install -g puntersedge-mcp` will not work. See
+  [/developers/mcp-server](https://puntersedge.online/developers/mcp-server).
 - **Examples** — [puntersedge-examples](https://github.com/Propertyscout001/puntersedge-examples):
   runnable scripts, starters, n8n workflows and a Google Sheets connector.
 - **Postman** — import <https://api.puntersedge.online/postman.json>.
@@ -317,3 +356,9 @@ parameter name that the server silently ignores while returning a cheerful 200.
 MIT. Data licensing is separate: internal use is included on every plan, showing prices to end
 users needs attribution on Plus and above, and redistribution needs Platform. See
 [the terms](https://puntersedge.online/terms).
+
+---
+
+Odds data is provided for informational and analytical use only. This is not betting advice and no
+return of any kind is claimed or implied. 18+ only. Gambling can be addictive — please gamble
+responsibly. Gambling Help: 1800 858 858.
