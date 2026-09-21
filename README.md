@@ -92,10 +92,11 @@ the same way here.
 | `pe.racing.*` | thoroughbred, greyhound, harness — AU and NZ |
 | `pe.sports.*` | AFL, NRL, NBA, and the rest, by sport key |
 | `pe.arb.*` | cross-book comparison and arbitrage scanning |
-| `pe.account.*` | usage, key metadata, rotation, billing |
+| `pe.account.*` | usage, key metadata, rotation, team keys, overage, billing, referrals |
 | `pe.webhooks.*` | push delivery instead of polling |
 | `pe.health.*` | per-connector freshness, public uptime |
 | `pe.demo.*` | the sandbox: real prices, truncated, no key |
+| `pe.bulk.*` | dataset files: whole days and months as Parquet or CSV, Business and above |
 
 ## Credits, read for free
 
@@ -298,6 +299,29 @@ await writeFile("closing-lines.csv", csv);
 depends on the format you ask for, and the reason is size: the server caps a CSV pull at 50,000
 rows against 5,000 for a JSON page, so one call can return ten times the data for four times the
 price. If you are paging a small window, ask for JSON.
+
+### Dataset files (Business and above)
+
+Whole days and months as one file, Parquet or gzip-CSV, with the same rows the paged endpoints
+give. Read the catalogue first — a day's file is regenerated for three nights after the day and
+its digest changes when its rows do — and send the digest back so an unchanged file costs nothing:
+
+```ts
+const { datasets } = await pe.bulk.datasets();
+const newest = datasets[0].days.at(-1);                        // newest daily file
+const file = await pe.bulk.download(datasets[0].name, newest.period, { format: "parquet" });
+if (!file.unchanged) await writeFile(`${datasets[0].name}-${newest.period}.parquet`, file.bytes);
+// next time, pass file.etag as ifNoneMatch: a 304 is { unchanged: true } and is not charged.
+```
+
+Daily files cost 20 credits, monthly bundles 100 (Platform and above).
+
+### Closing line value (Plus and above)
+
+`racing.clv()` scores up to 200 bets against the line each race closed at — per bet the closing
+price, CLV in percent and flat-stake P&L; across the list the averages, the beat-the-close rate
+and the ROI. 5 credits per request. Name a race by `race_id` and a runner by `runner_ref` for an
+exact match; a bet the archive cannot resolve comes back with a `reason` rather than a guess.
 
 ## Joining a horse across meetings
 

@@ -86,6 +86,7 @@ function calls(pe) {
     ["racing.trainerStats", () => pe.racing.trainerStats({ name: "Waller", state: "AUS", scope: "all", season: "previous" })],
     ["racing.closingLinesCsv", () => pe.racing.closingLinesCsv({ date: "2026-09-01" })],
     ["racing.pricePathsCsv", () => pe.racing.pricePathsCsv({ date: "2026-09-01" })],
+    ["racing.clv", () => pe.racing.clv({ bets: [{ race_id: "r1", runner_ref: "ra:x", price: 3.5, stake: 10 }], reference: "best" })],
     // racing / form
     ["racing.horses.form", () => pe.racing.horses.form("Winx")],
     ["racing.horses.runs", () => pe.racing.horses.runs("Winx", { limit: 20 })],
@@ -112,6 +113,17 @@ function calls(pe) {
     ["account.billingPortal", () => pe.account.billingPortal()],
     ["account.rotateKey", () => pe.account.rotateKey({ immediate: true })],
     ["account.setIpWhitelist", () => pe.account.setIpWhitelist(["1.2.3.4"])],
+    ["account.overage", () => pe.account.overage()],
+    ["account.setOverage", () => pe.account.setOverage(true)],
+    ["account.teamKeys", () => pe.account.teamKeys()],
+    ["account.mintTeamKey", () => pe.account.mintTeamKey({ label: "worker", monthly_cap: 5000 })],
+    ["account.updateTeamKey", () => pe.account.updateTeamKey("k1", { label: "Jo's laptop" })],
+    ["account.revokeTeamKey", () => pe.account.revokeTeamKey("k1")],
+    ["account.referral", () => pe.account.referral()],
+    ["account.setReferralPayout", () => pe.account.setReferralPayout({ reward_type: "credits" })],
+    // bulk
+    ["bulk.datasets", () => pe.bulk.datasets({ dataset: "closing_lines" })],
+    ["bulk.download", () => pe.bulk.download("closing_lines", "2026-09-01", { format: "csv", ifNoneMatch: '"abc"' })],
     // webhooks
     ["webhooks.create", () => pe.webhooks.create({ url: "https://example.com/hook", events: ["race.odds_open"] })],
     ["webhooks.list", () => pe.webhooks.list()],
@@ -188,21 +200,13 @@ test("the SDK covers the read surface a customer is sold", async () => {
     "/v1/data-quality/audit/{run_id}/results",
     "/v1/data-quality/summary",
     "/v1/demo/book-sport",
-    // Shipped on the API on 20–21 September 2026 and not yet wrapped here. The console sign-in
-    // flows (`login/*`, `logout`, `keys/reveal`) belong to the website. Team keys, overage,
-    // the bulk dataset files, the referral programme and the CLV scorer are customer features
-    // reachable through `raw()` until they get methods of their own.
+    // The key console's sign-in flow (`login/*`, `logout`, `keys/reveal`) belongs to the
+    // website: it authenticates a browser session by email, not a key, and nothing
+    // programmatic needs it.
     "/v1/login/request",
     "/v1/login/exchange",
     "/v1/logout",
     "/v1/keys/reveal",
-    "/v1/keys/team",
-    "/v1/keys/team/{key_id}",
-    "/v1/billing/overage",
-    "/v1/bulk/datasets",
-    "/v1/bulk/{dataset}/{period}",
-    "/v1/referral",
-    "/v1/racing/clv",
   ]);
 
   const reached = [];

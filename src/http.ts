@@ -18,6 +18,9 @@ import {
 } from "./errors.js";
 import { parseCredits, parseUpgrade, type Credits } from "./credits.js";
 
+/** The verbs this API uses. */
+export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+
 /** A query value the client knows how to serialise. */
 export type QueryValue = string | number | boolean | null | undefined | (string | number)[];
 export type Query = Record<string, QueryValue>;
@@ -38,6 +41,11 @@ export interface RequestOptions {
   timeoutMs?: number;
   /** Extra headers for this call. */
   headers?: Record<string, string>;
+  /**
+   * `binary` returns the body as bytes (`Uint8Array`) instead of parsing it, for the bulk
+   * dataset files, which are Parquet or gzip-CSV. Default: JSON, with text as the fallback.
+   */
+  responseType?: "json" | "binary";
 }
 
 export interface TransportConfig {
@@ -209,7 +217,7 @@ function withTimeout(signal: AbortSignal | undefined, ms: number): {
 
 export async function request<T>(
   config: TransportConfig,
-  method: "GET" | "POST" | "DELETE",
+  method: HttpMethod,
   path: string,
   params?: Query,
   jsonBody?: unknown,
@@ -256,6 +264,10 @@ export async function request<T>(
 
   // 204 and an empty 200 (DELETE /v1/webhooks/{id}) have no body to parse.
   if (res.status === 204) return { data: undefined as T, credits, headers: res.headers };
+  if (options.responseType === "binary") {
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return { data: bytes as unknown as T, credits, headers: res.headers };
+  }
   const body = await readBody(res);
   if (body.text === undefined || body.text === "") {
     return { data: undefined as T, credits, headers: res.headers };

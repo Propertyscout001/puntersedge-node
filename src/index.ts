@@ -37,6 +37,8 @@ export {
   type SportOddsOptions,
   type ArbOptions,
   type WebhookCreateInput,
+  type BulkDownloadOptions,
+  type BulkDownload,
 } from "./client.js";
 
 export {
@@ -61,7 +63,9 @@ export {
   type UpgradeHint,
 } from "./credits.js";
 
-export { buildQuery, type Query, type QueryValue, type Result, type RequestOptions } from "./http.js";
+export {
+  buildQuery, type HttpMethod, type Query, type QueryValue, type Result, type RequestOptions,
+} from "./http.js";
 
 export { verifyWebhookSignature, type VerifyOptions } from "./webhook.js";
 

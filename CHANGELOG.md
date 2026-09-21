@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.0 — 2026-09-21
+
+Methods for every customer endpoint the API added on 20–21 September. No behaviour changes to
+existing methods.
+
+- **`pe.racing.clv(input)`** — score up to 200 bets against the line each race closed at. 5 credits
+  per request, Plus and above.
+- **`pe.bulk.datasets()`** and **`pe.bulk.download(dataset, period, { format, ifNoneMatch })`** —
+  the pre-built dataset files (Business and above; monthly bundles Platform and above). The
+  download comes back as bytes with the ETag and row count off the headers; pass the ETag back as
+  `ifNoneMatch` and an unchanged file is `{ unchanged: true }`, not charged and not an error.
+- **`pe.account.overage()` / `setOverage(enabled)`**, **`teamKeys()` / `mintTeamKey()` /
+  `updateTeamKey()` / `revokeTeamKey()`**, **`referral()` / `setReferralPayout()`**.
+- `raw()` accepts `PATCH`, and `RequestOptions.responseType: "binary"` returns a body as
+  `Uint8Array`. `HttpMethod`, `BulkDownloadOptions` and `BulkDownload` are exported.
+- The contract test now lists only the console sign-in flow (`login/*`, `logout`, `keys/reveal`)
+  as a deliberate omission: it authenticates a browser session by email, not a key.
+
 ## 1.1.0 — 2026-09-21
 
 `runner_ref` on a thoroughbred is not a horse identity, and the generated types said it was.

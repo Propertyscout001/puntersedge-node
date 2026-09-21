@@ -512,7 +512,7 @@ test("the API key is not reachable by enumeration or serialisation", async () =>
 
   assert.ok(!Object.keys(pe).includes("config"));
   assert.equal(JSON.stringify(Object.keys(pe).sort()),
-    JSON.stringify(["account", "arb", "credits", "demo", "health", "racing", "sports", "webhooks"]));
+    JSON.stringify(["account", "arb", "bulk", "credits", "demo", "health", "racing", "sports", "webhooks"]));
 
   // The nested API objects hold a back-reference to the client, so walk it too.
   const seen = new Set();
@@ -527,4 +527,50 @@ test("the API key is not reachable by enumeration or serialisation", async () =>
     return false;
   };
   assert.equal(walk(pe), false, "the API key was reachable by walking enumerable properties");
+});
+
+// ── bulk files and team keys ──────────────────────────────────────────────────────────────
+
+test("a bulk file comes back as bytes, with the ETag and row count read off the headers", async () => {
+  const capture = {};
+  const bytes = new Uint8Array([0x50, 0x41, 0x52, 0x31]); // "PAR1"
+  const pe = new PuntersEdge({
+    apiKey: KEY,
+    fetch: async (url, init) => {
+      capture.url = url;
+      capture.headers = init.headers;
+      return new Response(bytes, {
+        status: 200,
+        headers: { "Content-Type": "application/vnd.apache.parquet", ETag: '"abc"', "X-Dataset-Rows": "1234" },
+      });
+    },
+  });
+  const out = await pe.bulk.download("closing_lines", "2026-09-01", { format: "parquet", ifNoneMatch: '"old"' });
+  assert.equal(out.unchanged, false);
+  assert.deepEqual([...out.bytes], [...bytes]);
+  assert.equal(out.etag, '"abc"');
+  assert.equal(out.rows, 1234);
+  assert.equal(new URL(capture.url).pathname, "/v1/bulk/closing_lines/2026-09-01");
+  assert.equal(new URL(capture.url).searchParams.get("format"), "parquet");
+  assert.equal(capture.headers["If-None-Match"], '"old"');
+});
+
+test("a 304 on a bulk file is unchanged: true, not an error", async () => {
+  const pe = new PuntersEdge({
+    apiKey: KEY,
+    fetch: async () => new Response(null, { status: 304, headers: { ETag: '"abc"' } }),
+  });
+  const out = await pe.bulk.download("closing_lines", "2026-09-01", { ifNoneMatch: '"abc"' });
+  assert.equal(out.unchanged, true);
+  assert.equal(out.bytes, undefined);
+  assert.equal(out.etag, '"abc"');
+});
+
+test("updateTeamKey goes over the wire as PATCH with the JSON body, null included", async () => {
+  const capture = {};
+  const pe = new PuntersEdge({ apiKey: KEY, fetch: stub({ capture, body: { key_id: "k1" } }) });
+  await pe.account.updateTeamKey("k1", { monthly_cap: null });
+  assert.equal(capture.init.method, "PATCH");
+  assert.equal(capture.init.body, JSON.stringify({ monthly_cap: null }));
+  assert.equal(new URL(capture.url).pathname, "/v1/keys/team/k1");
 });

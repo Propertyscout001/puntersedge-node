@@ -18,19 +18,23 @@
  * are camelCase on the wire too (`oddsFormat`, `maxAgeMinutes`); those pass through untouched.
  */
 
-import { request, type Query, type RequestOptions, type Result, type TransportConfig } from "./http.js";
+import {
+  request, type HttpMethod, type Query, type RequestOptions, type Result, type TransportConfig,
+} from "./http.js";
+import { PuntersEdgeError } from "./errors.js";
 import type { Credits } from "./credits.js";
 import type {
   AcceptancesOut, ArchiveCoverageOut, BackfillStatusOut, BackfillSubmitOut,
-  BestOddsEventOut, BestPricesOut, ClosingLinesOut, ConnectorHealthOut,
-  GreyhoundFormOut, GreyhoundStatsOut, HorseFormOut, HorseRunsOut, LinesArbOut, MoverOut,
-  NextRaceOut, PremiershipOut, PriceHistoryOut, PricePathsOut, RaceEventOut,
-  RaceResultOut, RacingBestOddsOut, RacingChangesOut, ResultsCoverageOut,
-  SportOddsEventOut, SportOut, SportsArbOut, TrackConditionsOut, UsageOut,
+  BestOddsEventOut, BestPricesOut, BulkCatalogueOut, ClosingLinesOut, ClvIn, ClvOut,
+  ConnectorHealthOut, GreyhoundFormOut, GreyhoundStatsOut, HorseFormOut, HorseRunsOut,
+  LinesArbOut, MoverOut, NextRaceOut, OverageOut, PremiershipOut, PriceHistoryOut,
+  PricePathsOut, RaceEventOut, RaceResultOut, RacingBestOddsOut, RacingChangesOut,
+  ResultsCoverageOut, RewardIn, SportOddsEventOut, SportOut, SportsArbOut, TeamKeyIn,
+  TeamKeyListOut, TeamKeyMintOut, TeamKeyOut, TeamKeyPatchIn, TrackConditionsOut, UsageOut,
   VenueOut, WebhookDeliveryResponse, WebhookResponse,
 } from "./types.generated.js";
 
-export const VERSION = "1.1.0";
+export const VERSION = "1.2.0";
 
 /** Default base URL. The API is also reachable at `https://puntersedge.online/api`. */
 export const DEFAULT_BASE_URL = "https://api.puntersedge.online";
@@ -458,6 +462,20 @@ class RacingAPI {
       { Accept: "text/csv" },
     );
   }
+
+  /**
+   * Score bets you struck against the closing line each race actually closed at: per bet the
+   * closing price, the closing-line value in percent, whether it beat the close, the result and
+   * the flat-stake P&L; across the list the average and median CLV, the beat-the-close rate,
+   * the win rate and the ROI. 5 credits per request, up to 200 bets. Plus plan and above.
+   *
+   * Name a race by `race_id`, or by `venue` + `meeting_date` + `race_number`; name a runner by
+   * `runner_ref` (exact), `runner_number` or `runner_name`. A bet the archive cannot resolve
+   * comes back with a `reason` and is left out of the averages rather than guessed.
+   */
+  clv(input: ClvIn, options?: CallOptions): Promise<ClvOut> {
+    return this.pe.post<ClvOut>("/v1/racing/clv", input, options);
+  }
 }
 
 // ── sports ────────────────────────────────────────────────────────────────────────────────
@@ -613,6 +631,76 @@ class AccountAPI {
     return this.pe.raw<unknown>("POST", "/v1/keys/ip-whitelist", undefined, ips, request)
       .then((r) => r.data);
   }
+
+  /**
+   * Overage: whether this account may run past its monthly allowance, the rate, the ceiling
+   * the API enforces, and what this period would be invoiced if it ended now. Free, no credits.
+   */
+  overage(options?: CallOptions): Promise<OverageOut> {
+    return this.pe.get<OverageOut>("/v1/billing/overage", options);
+  }
+
+  /**
+   * Switch overage on or off. Free, no credits. Primary key only, commercial tiers only.
+   * On: calls continue past the allowance up to `ceiling` and the excess is invoiced at
+   * `rate_per_1000_cents` per thousand credits. Off: the hard 402 at the allowance returns at
+   * once, and any overage already served this period is still invoiced.
+   */
+  setOverage(enabled: boolean, options?: CallOptions): Promise<OverageOut> {
+    return this.pe.post<OverageOut>("/v1/billing/overage", { enabled }, options);
+  }
+
+  /**
+   * The primary key and every active team key on this account, with each one's calls and
+   * credits this period, its cap if it has one, and the shared pool's balance. Free, no credits.
+   */
+  teamKeys(options?: CallOptions): Promise<TeamKeyListOut> {
+    return this.pe.get<TeamKeyListOut>("/v1/keys/team", options);
+  }
+
+  /**
+   * Mint another key on this account. Free, no credits. Business, Platform and Scale plans
+   * hold three, five and ten keys in total, the primary included. The key shares the pool and
+   * plan, has its own rate-limit bucket, IP whitelist and usage line, and can be capped with
+   * `monthly_cap`. The key string is returned once and stored hashed: if it is lost, revoke it
+   * and mint again.
+   */
+  mintTeamKey(input: TeamKeyIn, options?: CallOptions): Promise<TeamKeyMintOut> {
+    return this.pe.post<TeamKeyMintOut>("/v1/keys/team", input, options);
+  }
+
+  /**
+   * Change a team key's monthly cap or label. Free, no credits. Only the fields present in
+   * `input` are written: `{ monthly_cap: null }` removes the cap; `{ label }` alone renames it.
+   */
+  updateTeamKey(keyId: string, input: TeamKeyPatchIn, options?: CallOptions): Promise<TeamKeyOut> {
+    return this.pe.patch<TeamKeyOut>(`/v1/keys/team/${encodeURIComponent(keyId)}`, input, options);
+  }
+
+  /**
+   * Revoke a team key. Free, no credits. It stops authenticating on the next request; its
+   * usage history stays in the account's breakdown.
+   */
+  revokeTeamKey(keyId: string, options?: CallOptions): Promise<Record<string, unknown>> {
+    return this.pe.delete<Record<string, unknown>>(
+      `/v1/keys/team/${encodeURIComponent(keyId)}`, options);
+  }
+
+  /**
+   * Your referral code, the link to share, and what it has earned. Free. The code is minted on
+   * the first call and never changes; `terms` in the response carries the live commission terms.
+   */
+  referral(options?: CallOptions): Promise<Record<string, unknown>> {
+    return this.pe.get<Record<string, unknown>>("/v1/referral", options);
+  }
+
+  /**
+   * Choose `cash` or `credits` for referral commission accrued from here on, and where a cash
+   * remittance should go. Free. Commission already in the ledger keeps the form it was earned in.
+   */
+  setReferralPayout(input: RewardIn, options?: CallOptions): Promise<Record<string, unknown>> {
+    return this.pe.post<Record<string, unknown>>("/v1/referral", input, options);
+  }
 }
 
 // ── webhooks ──────────────────────────────────────────────────────────────────────────────
@@ -714,6 +802,89 @@ class DemoAPI {
   }
 }
 
+// ── bulk dataset files ────────────────────────────────────────────────────────────────────
+
+export interface BulkDownloadOptions extends CallOptions {
+  /** `parquet` (typed columns, snappy) or `csv` (gzip). The server's default applies when omitted. */
+  format?: "parquet" | "csv";
+  /**
+   * The file's digest from a previous download (`etag`) or from the catalogue (`sha256`). A match
+   * is a 304: `unchanged: true`, no bytes, nothing charged.
+   */
+  ifNoneMatch?: string;
+}
+
+export interface BulkDownload {
+  /** True when `ifNoneMatch` matched: the file has not changed and nothing was charged. */
+  unchanged: boolean;
+  /** The file as served: a Parquet file, or a gzip-compressed CSV. Undefined when `unchanged`. */
+  bytes?: Uint8Array;
+  /** The file's sha256, quoted as the server sends it. Pass it back as `ifNoneMatch` next time. */
+  etag?: string;
+  rows?: number;
+  generatedAt?: string;
+  contentType?: string;
+}
+
+/**
+ * Pre-built dataset files: one request returns a whole Sydney meeting day or a calendar month as
+ * one Parquet or gzip-CSV file, with exactly the rows the paged endpoints would give you. Daily
+ * files need the Business plan or above; monthly bundles need Platform or above.
+ *
+ * Read the catalogue before pulling, and re-read it nightly: a day's file is regenerated for
+ * three nights after the day (late results, late closing lines) and its digest changes when its
+ * rows do. Send the digest back as `ifNoneMatch` and an unchanged file costs nothing.
+ */
+class BulkAPI {
+  constructor(private readonly pe: PuntersEdge) {}
+
+  /**
+   * Every dataset published as files, with the daily files and monthly bundles that exist right
+   * now: rows, bytes per format, digest, generation time and URL. Free, no credits.
+   */
+  datasets(options?: CallOptions & { dataset?: string }): Promise<BulkCatalogueOut> {
+    return this.pe.get<BulkCatalogueOut>("/v1/bulk/datasets", options);
+  }
+
+  /**
+   * One dataset file. 20 credits for a daily file, 100 for a monthly bundle, charged when the
+   * file is served; a 304 on a matching `ifNoneMatch` costs nothing. `period` is `YYYY-MM-DD`
+   * for a Sydney meeting day or `YYYY-MM` for a calendar month.
+   */
+  async download(
+    dataset: string,
+    period: string,
+    options: BulkDownloadOptions = {},
+  ): Promise<BulkDownload> {
+    const { format, ifNoneMatch, ...rest } = options;
+    const { request: req } = split(rest);
+    const headers: Record<string, string> = { Accept: "*/*", ...req.headers };
+    if (ifNoneMatch) headers["If-None-Match"] = ifNoneMatch;
+    const path = `/v1/bulk/${encodeURIComponent(dataset)}/${encodeURIComponent(period)}`;
+    try {
+      const r = await this.pe.raw<Uint8Array>(
+        "GET", path, format ? { format } : undefined, undefined,
+        { ...req, headers, responseType: "binary" },
+      );
+      const rowsHeader = r.headers.get("X-Dataset-Rows");
+      const rows = rowsHeader === null ? NaN : Number(rowsHeader);
+      return {
+        unchanged: false,
+        bytes: r.data,
+        etag: r.headers.get("ETag") ?? undefined,
+        rows: Number.isFinite(rows) ? rows : undefined,
+        generatedAt: r.headers.get("X-Dataset-Generated-At") ?? undefined,
+        contentType: r.headers.get("Content-Type") ?? undefined,
+      };
+    } catch (err) {
+      if (err instanceof PuntersEdgeError && err.status === 304) {
+        return { unchanged: true, etag: err.headers?.get("ETag") ?? undefined };
+      }
+      throw err;
+    }
+  }
+}
+
 // ── the client ────────────────────────────────────────────────────────────────────────────
 
 export interface PuntersEdgeOptions {
@@ -752,6 +923,7 @@ export class PuntersEdge {
   readonly webhooks = new WebhooksAPI(this);
   readonly health = new HealthAPI(this);
   readonly demo = new DemoAPI(this);
+  readonly bulk = new BulkAPI(this);
 
   /**
    * Credit accounting from the most recent billed response — balance, cost, and the upgrade
@@ -809,7 +981,7 @@ export class PuntersEdge {
 
   /** Escape hatch: any endpoint, including ones added after this SDK was published. */
   async raw<T>(
-    method: "GET" | "POST" | "DELETE",
+    method: HttpMethod,
     path: string,
     params?: Query,
     body?: unknown,
@@ -833,6 +1005,12 @@ export class PuntersEdge {
   post<T>(path: string, body?: unknown, options?: CallOptions): Promise<T> {
     const { request: req } = split(options);
     return this.raw<T>("POST", path, undefined, body, req).then((r) => r.data);
+  }
+
+  /** @internal */
+  patch<T>(path: string, body?: unknown, options?: CallOptions): Promise<T> {
+    const { request: req } = split(options);
+    return this.raw<T>("PATCH", path, undefined, body, req).then((r) => r.data);
   }
 
   /** @internal */
