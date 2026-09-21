@@ -299,6 +299,21 @@ depends on the format you ask for, and the reason is size: the server caps a CSV
 rows against 5,000 for a JSON page, so one call can return ten times the data for four times the
 price. If you are paging a small window, ask for JSON.
 
+## Joining a horse across meetings
+
+Every thoroughbred runner and placing in `results()`, every runner on the live board, every
+closing-line and price-path row (the last CSV column) and both form endpoints carry
+`horse_ref` — `pe:<name>`, the registered name folded to letters and digits, the same value
+everywhere. Group a horse's history on it. `runner_ref` (`ra:<code>`) is Racing Australia's
+code for that meeting's entry and changes from meeting to meeting, so it joins a row to its own
+meeting's result and form page and nothing further. Greyhound refs (`grv:`/`grsa:`) are per-dog
+registry ids and do persist.
+
+```ts
+const runs = await pe.racing.horses.runs("Custo");         // our own settled results, newest first
+const form = await pe.racing.horses.form(runs.horse_ref);  // the same horse, by its horse_ref
+```
+
 ## Runtime notes
 
 **Timeouts and cancellation.** 30 seconds by default; override per client or per call, and pass

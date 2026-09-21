@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.1.0 — 2026-09-21
+
+`runner_ref` on a thoroughbred is not a horse identity, and the generated types said it was.
+
+- **`horse_ref`** is on every thoroughbred runner and placing in results, every live-board
+  runner, every closing-line and price-path row (the last column) and both form responses:
+  `pe:<name>`, the same value everywhere, and the key that joins one horse across meetings.
+  `runner_ref` (`ra:<code>`) is Racing Australia's code for that meeting's entry and changes
+  from meeting to meeting — measured 21 September 2026, 1,450 of the 1,452 horses with two or
+  more runs carried a different code on each. The types, regenerated from the live OpenAPI
+  document, say so; the old text ("a STABLE runner ref ... persists across meetings") is gone.
+- **`pe.racing.horses.runs(horse)`** is new: every run we hold for one horse out of our own
+  settled results, with a starts/wins/places summary. 3 credits. It is the answer when `form()`
+  returns a 503 because Racing Australia is refusing fresh reads.
+- Greyhound form and stats are documented as what they are: our own results since
+  13 September 2026, keyed by `grv:`/`grsa:` registry refs. Nothing here mentions Topaz any
+  more; that feed is not ours and is not served.
+- Types regenerated against the 67-path document (was 55): the horse-runs, CLV, bulk-dataset,
+  team-key, overage and referral shapes are exported. Those endpoints have no methods yet and
+  are listed as deliberate omissions in the contract test; `raw()` reaches them.
+
+No behaviour changes to existing methods.
+
 ## 1.0.2 — 2026-09-12
 
 Corrected the repository URL. 1.0.0 and 1.0.1 declared

@@ -23,14 +23,14 @@ import type { Credits } from "./credits.js";
 import type {
   AcceptancesOut, ArchiveCoverageOut, BackfillStatusOut, BackfillSubmitOut,
   BestOddsEventOut, BestPricesOut, ClosingLinesOut, ConnectorHealthOut,
-  GreyhoundFormOut, GreyhoundStatsOut, HorseFormOut, LinesArbOut, MoverOut,
+  GreyhoundFormOut, GreyhoundStatsOut, HorseFormOut, HorseRunsOut, LinesArbOut, MoverOut,
   NextRaceOut, PremiershipOut, PriceHistoryOut, PricePathsOut, RaceEventOut,
   RaceResultOut, RacingBestOddsOut, RacingChangesOut, ResultsCoverageOut,
   SportOddsEventOut, SportOut, SportsArbOut, TrackConditionsOut, UsageOut,
   VenueOut, WebhookDeliveryResponse, WebhookResponse,
 } from "./types.generated.js";
 
-export const VERSION = "1.0.2";
+export const VERSION = "1.1.0";
 
 /** Default base URL. The API is also reachable at `https://puntersedge.online/api`. */
 export const DEFAULT_BASE_URL = "https://api.puntersedge.online";
@@ -215,19 +215,39 @@ export interface PremiershipOptions extends CallOptions {
 }
 
 /**
- * Thoroughbred and greyhound form, and the paced bulk backfill queue.
+ * Thoroughbred form and runs, and the paced bulk backfill queue.
  *
- * Form is collected from Racing Australia and Topaz on a deliberate pace — the upstream rate-
- * limits hard, and a burst gets the whole estate flagged. `backfill` is the supported way to ask
- * for many horses: you submit a batch, the queue collects them at a sustainable rate, and you
- * collect the results when they land. Looping `form()` over 400 horses is the unsupported way.
+ * `form()` is Racing Australia's own form page for one horse, read on a deliberate pace — the
+ * upstream rate-limits hard, and a burst gets the whole estate flagged. `backfill` is the
+ * supported way to ask for many horses: you submit a batch, the queue collects them at a
+ * sustainable rate, and you collect the results when they land. Looping `form()` over 400
+ * horses is the unsupported way. `runs()` is our own record of the horse out of the results we
+ * settle ourselves, and does not depend on that page being served.
+ *
+ * Identity: every thoroughbred runner, placing, archive row and form response carries
+ * `horse_ref` (`pe:<name>`), the same value everywhere — join a horse across meetings on it.
+ * `runner_ref` (`ra:<code>`) is Racing Australia's code for that meeting's entry and changes
+ * from meeting to meeting, so it joins a row to its own meeting only.
  */
 class HorsesAPI {
   constructor(private readonly pe: PuntersEdge) {}
 
-  /** Form, career record and profile for one horse. 3 credits. */
+  /**
+   * Racing Australia's form page for one horse: career record, profile and recent runs. 3 credits.
+   * `horse` is a name, its `pe:` horse_ref (the same thing, folded) or an `ra:` runner_ref, which
+   * pins one meeting's entry. A 503 means the upstream is refusing fresh reads; `runs()` still answers.
+   */
   form(horse: string, options?: CallOptions): Promise<HorseFormOut> {
     return this.pe.get<HorseFormOut>("/v1/racing/horses/form", { horse, ...options });
+  }
+
+  /**
+   * Every run we hold for one horse out of our own settled results, newest first, with a
+   * starts/wins/places summary. 3 credits. Not a career: the record starts at the first complete
+   * card we settled (1 September 2026) and only grows. Takes a name or a `pe:` horse_ref.
+   */
+  runs(horse: string, options?: CallOptions & { limit?: number }): Promise<HorseRunsOut> {
+    return this.pe.get<HorseRunsOut>("/v1/racing/horses/runs", { horse, ...options });
   }
 
   /** Queue a batch of horses for paced form collection. 3 credits. */
@@ -264,15 +284,16 @@ class GreyhoundsAPI {
   constructor(private readonly pe: PuntersEdge) {}
 
   /**
-   * Form history for one dog. 3 credits.
-   * `dog` is a name or a Topaz dogId; names match case- and punctuation-insensitively.
+   * Form history for one dog, out of our own results since 13 September 2026. 3 credits.
+   * `dog` is a name or a registry ref from results (`grv:<id>` on Victorian tracks, `grsa:<id>`
+   * elsewhere); names match case- and punctuation-insensitively and join a dog across both.
    */
   form(dog: string, options?: CallOptions & { limit?: number }): Promise<GreyhoundFormOut> {
     return this.pe.get<GreyhoundFormOut>("/v1/racing/greyhounds/form", { dog, ...options });
   }
 
   /**
-   * Record by track, distance, box or grade. 3 credits.
+   * Record by track, distance or box, out of our own results. 3 credits.
    * `by` crosses dimensions: `["track", "distance"]` groups by both.
    */
   stats(
@@ -323,7 +344,11 @@ class RacingAPI {
     return this.pe.get<MoverOut[]>("/v1/racing/movers", options);
   }
 
-  /** Settled results: placings, settled prices, dividends and scratchings. 2 credits. */
+  /**
+   * Settled results: placings, the full finishing order, settled prices, dividends and
+   * scratchings. 2 credits. Every thoroughbred runner and placing carries `horse_ref`, the key
+   * that joins a horse across meetings; `runner_ref` is that meeting's Racing Australia entry code.
+   */
   results(options?: RaceResultsOptions): Promise<RaceResultOut[]> {
     return this.pe.get<RaceResultOut[]>("/v1/racing/results", options);
   }
@@ -354,6 +379,9 @@ class RacingAPI {
    *
    * See `closingLinesCsv` for the bulk form, which costs 20 — the archive endpoints are the
    * only two on the API whose price depends on the format you ask for.
+   *
+   * Thoroughbred rows carry `horse_ref` (the last column), so one horse's closing lines across
+   * meetings are a single group; `runner_ref` joins a row to its own meeting's result and form.
    */
   closingLines(options?: ClosingLinesOptions): Promise<ClosingLinesOut> {
     return this.pe.get<ClosingLinesOut>("/v1/racing/closing-lines", options);
@@ -366,7 +394,8 @@ class RacingAPI {
 
   /**
    * Bulk export of the permanent price-movement archive. **5 credits.** Standard plan and
-   * above. The CSV form (`pricePathsCsv`) costs 20.
+   * above. The CSV form (`pricePathsCsv`) costs 20. Thoroughbred rows carry `horse_ref` (the
+   * last column), the key that groups one horse's price paths across meetings.
    */
   pricePaths(options?: ArchiveOptions): Promise<PricePathsOut> {
     return this.pe.get<PricePathsOut>("/v1/racing/price-paths", options);

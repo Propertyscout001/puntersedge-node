@@ -88,6 +88,7 @@ function calls(pe) {
     ["racing.pricePathsCsv", () => pe.racing.pricePathsCsv({ date: "2026-09-01" })],
     // racing / form
     ["racing.horses.form", () => pe.racing.horses.form("Winx")],
+    ["racing.horses.runs", () => pe.racing.horses.runs("Winx", { limit: 20 })],
     ["racing.horses.submitBackfill", () => pe.racing.horses.submitBackfill({ horses: ["Winx"] })],
     ["racing.horses.cancelBackfill", () => pe.racing.horses.cancelBackfill("job1")],
     ["racing.horses.backfillStatus", () => pe.racing.horses.backfillStatus("job1")],
@@ -187,6 +188,21 @@ test("the SDK covers the read surface a customer is sold", async () => {
     "/v1/data-quality/audit/{run_id}/results",
     "/v1/data-quality/summary",
     "/v1/demo/book-sport",
+    // Shipped on the API on 20–21 September 2026 and not yet wrapped here. The console sign-in
+    // flows (`login/*`, `logout`, `keys/reveal`) belong to the website. Team keys, overage,
+    // the bulk dataset files, the referral programme and the CLV scorer are customer features
+    // reachable through `raw()` until they get methods of their own.
+    "/v1/login/request",
+    "/v1/login/exchange",
+    "/v1/logout",
+    "/v1/keys/reveal",
+    "/v1/keys/team",
+    "/v1/keys/team/{key_id}",
+    "/v1/billing/overage",
+    "/v1/bulk/datasets",
+    "/v1/bulk/{dataset}/{period}",
+    "/v1/referral",
+    "/v1/racing/clv",
   ]);
 
   const reached = [];

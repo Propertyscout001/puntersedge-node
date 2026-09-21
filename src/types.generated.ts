@@ -133,12 +133,19 @@ export interface BackfillStatusOut {
   estimated_ready?: string | null;
   /** Completed rows you have not yet read. */
   ready_to_collect: number;
+  /**
+   * Whether Racing Australia is answering form reads at all. Added 2026-09-21 and purely
+   * additive: nothing else on this response, and nothing about billing or the queue, changed
+   * with it.
+   */
+  upstream: UpstreamBlock;
 }
 
 export interface BackfillSubmitIn {
   /**
-   * Horse names or ra: refs. Max 500 per call. A ref is exact; a name is resolved against
-   * acceptances and archived results.
+   * Horse names, `pe:` horse_refs or `ra:` entry codes, in any mix. Max 500 per call. A name and
+   * its horse_ref resolve identically, against acceptances and archived results; an `ra:` code
+   * pins one meeting's entry.
    */
   horses: string[];
   /** Your own tag for this batch, echoed back on status. */
@@ -151,8 +158,9 @@ export interface BackfillSubmitOut {
   /** Horses accepted and waiting on the worker. */
   queued: number;
   /**
-   * Horses we already hold a fresh copy of. Collectable immediately, still billed at 3 credits
-   * each.
+   * Horses we already hold a fresh copy of — matched on the HORSE since 2026-09-21, so a page
+   * collected under any of its Racing Australia entry codes counts. Collectable immediately,
+   * still billed at 3 credits each.
    */
   already_stored: number;
   /** Already queued for you; not queued twice. */
@@ -187,6 +195,43 @@ export interface BestPricesOut {
   away_team: string | null;
   commence_time: string;
   selections: Record<string, unknown>[];
+}
+
+export interface BulkCatalogueOut {
+  datasets: BulkDatasetOut[];
+  formats?: string[];
+  day_plans: string;
+  month_plans: string;
+  credits: Record<string, number>;
+  schedule: string;
+  notes?: string[];
+}
+
+export interface BulkDatasetOut {
+  name: string;
+  title: string;
+  description: string;
+  grain: string;
+  /** Column order of every file in this dataset, read from the newest file's sidecar. */
+  columns?: string[];
+  available_from: string;
+  /** Daily files, oldest first. Business and above. */
+  days?: BulkFileOut[];
+  /** Monthly bundles, oldest first. Platform and above. */
+  months?: BulkFileOut[];
+}
+
+export interface BulkFileOut {
+  period: string;
+  /** day (YYYY-MM-DD, Sydney meeting date) or month (YYYY-MM). */
+  kind: string;
+  rows?: number | null;
+  generated_at?: string | null;
+  /** Size per format: parquet, csv (gzip). */
+  bytes?: Record<string, number>;
+  /** Digest per format; also the ETag. */
+  sha256?: Record<string, string>;
+  url: string;
 }
 
 export interface ChangedRaceOut {
@@ -321,6 +366,129 @@ export interface ClosingLinesOut {
   rows: Record<string, unknown>[];
 }
 
+export interface ClvBetIn {
+  /** Your own id for this bet, echoed back unchanged. */
+  ref?: string | null;
+  /**
+   * The race_id from /v1/racing/next-to-go, /events, /results or the archive. The most reliable
+   * way to name a race; use venue + meeting_date + race_number only when you do not hold it.
+   */
+  race_id?: string | null;
+  /** Venue name as our feeds spell it (case-insensitive). Needs meeting_date and race_number. */
+  venue?: string | null;
+  race_number?: number | null;
+  /** AET meeting date, YYYY-MM-DD. */
+  meeting_date?: string | null;
+  /**
+   * Registry id as served on /results and the archive — ra:<horsecode> or grv:<dogId>. Exact
+   * match; the most reliable way to name a runner.
+   */
+  runner_ref?: string | null;
+  /** Saddlecloth number. */
+  runner_number?: number | null;
+  /**
+   * Runner name; matched the same way the feeds match names (case, punctuation and country
+   * suffixes ignored).
+   */
+  runner_name?: string | null;
+  /**
+   * bookmaker_key the bet was struck with. When given, `clv_pct` is measured against THAT book's
+   * closing price and `close_book` is filled; when absent, against the market reference chosen
+   * by `reference`.
+   */
+  bookmaker?: string | null;
+  /** Decimal odds you took. */
+  price: number;
+  /** Stake for the P&L line. Defaults to one flat unit. */
+  stake?: number;
+}
+
+export interface ClvBetOut {
+  ref?: string | null;
+  /**
+   * True when the race AND the runner were found in the archive. False rows carry `reason` and
+   * no numbers.
+   */
+  resolved: boolean;
+  /**
+   * race_not_found · race_ambiguous · runner_not_found · runner_ambiguous · bookmaker_withheld ·
+   * no_closing_line · no_closing_line_for_book.
+   */
+  reason?: string | null;
+  race_id?: string | null;
+  venue?: string | null;
+  race_number?: number | null;
+  runner_key?: string | null;
+  runner_name?: string | null;
+  runner_number?: number | null;
+  runner_ref?: string | null;
+  bookmaker?: string | null;
+  price_taken: number;
+  stake: number;
+  /** The named bookmaker's closing win price, when it recorded a closing line. */
+  close_book?: number | null;
+  /** Highest closing win price across books. */
+  close_best?: number | null;
+  /** Median closing win price across books. */
+  close_median?: number | null;
+  /** Books with a closing line for this runner. */
+  books_at_close?: number;
+  /**
+   * The close `clv_pct` is measured against: close_book when a bookmaker was named and priced
+   * the close, else the market reference.
+   */
+  close_reference?: number | null;
+  /** (price_taken / close_reference − 1) × 100. Positive means you beat the close. */
+  clv_pct?: number | null;
+  beat_close?: boolean | null;
+  finish_position?: number | null;
+  /** final · interim · null (not yet resulted). */
+  result_status?: string | null;
+  /** finish_position == 1 on a final result; null until final. */
+  won?: boolean | null;
+  /** stake × (price − 1) on a win, −stake on a loss, null until the result is final. */
+  pnl?: number | null;
+}
+
+export interface ClvIn {
+  /** Up to 200 bets per request. */
+  bets: ClvBetIn[];
+  /**
+   * The market close used when a bet names no bookmaker, and reported as close_best /
+   * close_median on every bet regardless: `best` is the highest closing win price across books,
+   * `median` the median.
+   */
+  reference?: string;
+}
+
+export interface ClvOut {
+  reference: string;
+  /** Earliest race day the archive holds; bets before it cannot resolve. */
+  archive_floor?: string | null;
+  summary: ClvSummaryOut;
+  bets: ClvBetOut[];
+  notes?: string[];
+}
+
+export interface ClvSummaryOut {
+  bets: number;
+  resolved: number;
+  unresolved: number;
+  /** Bets with a closing line to measure against. */
+  scored: number;
+  avg_clv_pct?: number | null;
+  median_clv_pct?: number | null;
+  beat_close?: number;
+  beat_close_rate_pct?: number | null;
+  /** Scored-or-resolved bets with a final result. */
+  resulted?: number;
+  wins?: number;
+  win_rate_pct?: number | null;
+  staked?: number | null;
+  pnl?: number | null;
+  roi_pct?: number | null;
+}
+
 export interface ConnectorHealthOut {
   connector: string;
   last_ok: string | null;
@@ -330,106 +498,147 @@ export interface ConnectorHealthOut {
   message?: string | null;
 }
 
-export interface DogCandidate {
-  dog_id: number;
-  dog_name?: string | null;
-  /** Career starts on this feed, scratchings included. */
-  runs: number;
-  /** Meeting date of the most recent run. */
-  last_start?: string | null;
-}
-
 export interface GreyhoundFormOut {
-  dog_id?: number | null;
-  dog_name?: string | null;
-  /** True when the name matched several dogs. `runs` is then empty and `candidates` lists them. */
-  ambiguous: boolean;
-  candidates?: DogCandidate[];
-  runs?: GreyhoundRun[];
+  /** The dog's name as our results spell it. */
+  dog: string;
+  /** The identity the runs were grouped on (letters and digits). */
+  name_key: string;
+  /** Every registry id seen for this name, across both collectors. */
+  runner_refs: string[];
+  /** Runs held for this dog since `source.coverage_from`; `runs` is the newest `limit` of them. */
+  runs_total: number;
+  runs: GreyhoundRun[];
   source: SourceBlock;
 }
 
 export interface GreyhoundRun {
-  /** Meeting date, AEST calendar day, YYYY-MM-DD. */
+  /** Sydney calendar date of the race. */
   date?: string | null;
-  /** Official Topaz track name, sponsor included (e.g. 'Bet Deluxe Capalaba'). */
-  track?: string | null;
-  distance_m?: number | null;
-  /** Topaz raceTypeCode, e.g. '5', 'M', 'X45'. */
-  grade?: string | null;
+  /** Scheduled start, UTC. */
+  start_time?: string | null;
+  venue?: string | null;
   race_number?: number | null;
+  distance_m?: number | null;
+  race_name?: string | null;
+  track_condition?: string | null;
   box?: number | null;
-  rug?: number | null;
-  weight_kg?: number | null;
-  /** Official starting price, decimal. */
-  sp?: number | null;
-  /** Finishing place. NULL when the dog did not complete the course or was scratched. */
+  /** Rug number; equals box for a starter. */
+  number?: number | null;
+  /**
+   * Finishing place. Null when the dog did not run (see `status`) or did not complete the
+   * course.
+   */
   position?: number | null;
-  scratched: boolean;
-  /** Fell, TailedOff, PulledUp, Disqualified or StayedInBox. NULL for a normal run. */
-  abnormal?: string | null;
-  time_s?: number | null;
-  /** Winning time of this race, i.e. the place-1 dog's time. */
-  win_time_s?: number | null;
-  /** Margin to the winner in lengths, as Topaz publishes it (e.g. '5.50L'). */
+  /** `ran`, `scratched`, or `reserve` (a rug 9/10 reserve that never got a box). */
+  status?: string | null;
+  /**
+   * Lengths behind the winner as the source printed it; the winner's own row carries the winning
+   * margin on Victorian tracks and null elsewhere.
+   */
   margin?: string | null;
+  /** The dog's own finish time in seconds. */
+  time_s?: number | null;
   /**
-   * Margin to the winner in seconds. On the winner's own run this is the winning margin over the
-   * runner-up.
+   * First sectional in seconds, as the source page printed it. Null where it printed none — a
+   * reserve that never started has none, and some tracks publish no sectionals at all.
    */
-  margin_s?: number | null;
-  first_split_time?: number | null;
-  first_split_position?: number | null;
+  first_split_s?: number | null;
   /**
-   * Second sectional split. Only some tracks time two points: 21% of all runs carry one (603,734
-   * of 2,861,690, measured 2026-09-02).
+   * Second sectional in seconds. Null on every Victorian run: FastTrack publishes one split, not
+   * two.
    */
-  second_split_time?: number | null;
-  second_split_position?: number | null;
-  /** The dog's grade entering this race, as Topaz graded it. */
-  grade_in?: string | null;
+  second_split_s?: number | null;
   /**
-   * The dog's grade after this race's result was applied. A value differing from grade_in is a
-   * grade change — a win typically moves the dog down a number (5 -> 4).
+   * Race-day weight in kilograms. Null where the page prints no weight — Western Australian
+   * meetings carry no weight column at all.
    */
-  grade_out?: string | null;
-  /** Position in running, one digit per section. */
+  weight_kg?: number | null;
+  /**
+   * Position in running, FastTrack's own digits ("21" = 2nd then 1st at the marks), passed
+   * through as TEXT and not a number. Victorian runs only; null everywhere else.
+   */
   pir?: string | null;
-  trainer: TrainerRef;
-  /** Topaz raceId. Every runner in the same race shares it. */
-  topaz_race_id?: number | null;
-  dog_id: number;
-  dog_name?: string | null;
+  /**
+   * The race's grade in the SOURCE'S OWN WORDS — "M", "4/5", "FFA" on the national pages, a race
+   * type like "Tier 3 - Maiden" on FastTrack. The two vocabularies are NOT mapped onto each
+   * other and must not be compared across states. Null on runs whose field was stored before
+   * 2026-09-21.
+   */
+  grade?: string | null;
+  /** The winner's time in the same race, so `time_s - win_time_s` is the deficit. */
+  win_time_s?: number | null;
+  /** Official starting price, decimal return on $1. Null = unknown, never zero. */
+  sp?: number | null;
+  dead_heat?: boolean;
+  trainer?: string | null;
+  /** Dogs that ran in that race. */
+  field_size?: number | null;
+  /** Registry id of the dog as the collector for that track numbers it: grv:<id> or grsa:<id>. */
+  runner_ref?: string | null;
+  /** `fasttrack` or `grsa` — which collector wrote the race. */
+  source?: string | null;
+  /**
+   * `results` — the race is one we settled and serve on /v1/racing/results; `history` — the race
+   * was read back off the same official results page by our history collector and has no results
+   * row.
+   */
+  origin?: string | null;
+  /**
+   * Id of the /v1/racing/results row this run came from. On an `origin: history` run it is a
+   * synthetic `hist:…` id that joins to nothing.
+   */
+  result_id?: string | null;
 }
 
-export interface GreyhoundStatGroup {
+export interface GreyhoundStatRow {
+  /** Set when `by` includes track. */
   track?: string | null;
+  /** Set when `by` includes distance. */
   distance_m?: number | null;
+  /** Set when `by` includes box. */
   box?: number | null;
-  grade?: string | null;
+  /**
+   * Runs with status `ran` — scratchings and unused reserves are excluded from every figure
+   * here.
+   */
   starts: number;
   wins: number;
-  /** Finishes in the first three. */
+  /** Finishes in the first three, wins included. */
   places: number;
   win_pct: number;
   place_pct: number;
+  /** Over the runs with a recorded time. */
   avg_time_s?: number | null;
   best_time_s?: number | null;
-  avg_first_split?: number | null;
+  /**
+   * Mean first sectional over the runs in this group that carry one. Null when none does — the
+   * count behind it is not `starts`, because some tracks publish no sectionals.
+   */
+  avg_first_split_s?: number | null;
+  /** Mean official starting price over the runs that carry one. */
+  avg_sp?: number | null;
+  /** Sydney date of the most recent run in the group. */
+  last_start?: string | null;
 }
 
 export interface GreyhoundStatsOut {
-  dog_id?: number | null;
-  dog_name?: string | null;
-  ambiguous: boolean;
-  candidates?: DogCandidate[];
-  group_by?: string[];
-  groups?: GreyhoundStatGroup[];
+  dog: string;
+  name_key: string;
+  runner_refs: string[];
+  /** The dimensions the rows are grouped by, in the order given. */
+  by: string[];
+  /** One row per distinct combination, most starts first. */
+  rows: GreyhoundStatRow[];
+  /** The same figures over every run since `source.coverage_from`. */
+  overall: GreyhoundStatRow;
   source: SourceBlock;
 }
 
 export interface HorseCandidate {
-  /** Stable ra: horsecode — re-query with this. */
+  /**
+   * Racing Australia entry code — re-query with this to pin one meeting's entry. `candidates` is
+   * empty from 2026-09-21: a name resolves to one horse. See `ambiguous`.
+   */
   runner_ref: string;
   runner_name?: string | null;
   /** Most recent date this ref appeared on our feeds (acceptance or result). */
@@ -460,11 +669,25 @@ export interface HorseCareer {
 export interface HorseFormOut {
   horse_name?: string | null;
   /**
-   * Stable ra: horsecode — the same identifier on /v1/racing/results runners and
-   * acceptance-enriched live runners.
+   * The HORSE: `pe:<name>`, the registered name folded to letters and digits. The same value on
+   * /v1/racing/results runners and placings, the live board, the closing-line and price-path
+   * archives, /v1/racing/horses/runs and the form backfill — and accepted as `horse` here. This
+   * is the key to join a horse across meetings.
+   */
+  horse_ref?: string | null;
+  /**
+   * Racing Australia's code for the ENTRY whose page was read — the same identifier on
+   * /v1/racing/results runners and acceptance-enriched live runners FOR THAT MEETING. It changes
+   * from meeting to meeting (measured 2026-09-21: 1,450 of 1,452 horses with two or more runs
+   * carried a different code on each), so it is not a horse identity — `horse_ref` is. Where a
+   * horse has several codes this is the most recently seen one.
    */
   runner_ref?: string | null;
-  /** True when the name matched several horses. `runs` is then empty and `candidates` lists them. */
+  /**
+   * ALWAYS FALSE since 2026-09-21, and kept only so that callers reading it do not break. A name
+   * now resolves to one horse: several ra: codes under one name are the ordinary case (they are
+   * entry codes), not two horses. `candidates` is empty with it.
+   */
   ambiguous: boolean;
   candidates?: HorseCandidate[];
   profile?: HorseProfile | null;
@@ -541,6 +764,111 @@ export interface HorseRun {
    * runner-up otherwise), each with its own ra: code.
    */
   placegetters?: RunPlacegetter[];
+}
+
+export interface HorseRunRow {
+  /** Sydney calendar date of the race. */
+  date?: string | null;
+  /** Scheduled start, UTC. */
+  start_time?: string | null;
+  venue?: string | null;
+  race_number?: number | null;
+  distance_m?: number | null;
+  race_name?: string | null;
+  /** As published for the meeting, e.g. 'Good 4'. */
+  track_condition?: string | null;
+  /** Saddlecloth number. */
+  number?: number | null;
+  /** Barrier. Null on a scratching — a runner that never jumped has no barrier. */
+  box?: number | null;
+  /**
+   * Finishing place. Null when the horse did not start (see `status`) or started and did not
+   * finish (see `abnormal`).
+   */
+  position?: number | null;
+  /** `ran` or `scratched`, exactly as /v1/racing/results publishes it. */
+  status?: string | null;
+  /**
+   * Racing Australia's own Finish cell whenever it is not a number, passed through verbatim
+   * (Fell, PulledUp, TailedOff, LR, FF, LP, and 'SB' for scratched at the barrier). THERE IS NO
+   * CLOSED LIST — an unseen code reaches you unchanged. Read it with `status`.
+   */
+  abnormal?: string | null;
+  /** Lengths behind the winner as RA printed it ('0.75L'); null where it prints none. */
+  margin?: string | null;
+  /**
+   * The horse's own race time in seconds. NULL on every row today: RA's results table publishes
+   * no per-runner time (0 of 10,092 stored runners carry one, measured 2026-09-21).
+   * /v1/racing/horses/form carries RA's official race time where we hold that horse's page.
+   */
+  time_s?: number | null;
+  /** Official starting price, decimal return on $1. Null = unknown, never zero. */
+  sp?: number | null;
+  /** RA's favouritism marker: 'F' favourite, 'EF' equal favourite; null otherwise. */
+  sp_note?: string | null;
+  dead_heat?: boolean;
+  /** Trainer of the day for THIS run, as the result published it. */
+  trainer?: string | null;
+  /** Rider of the day for THIS run. */
+  jockey?: string | null;
+  /** Horses that ran in that race. */
+  field_size?: number | null;
+  /**
+   * The Racing Australia horsecode our results collector published for THIS entry — the same
+   * value on the matching /v1/racing/results runner. It is not a horse identity here: measured
+   * 2026-09-21 over the whole store, 10,092 runner rows carry 9,872 distinct codes across 7,326
+   * names, so the same horse usually carries a different code at each meeting. Group on
+   * `horse_ref`, not on this.
+   */
+  runner_ref?: string | null;
+  /**
+   * The horse this run belongs to: `pe:<name>`, the registered name folded to letters and
+   * digits. Identical on every run of the same horse, and the same value /v1/racing/results
+   * runners and placings, the live board, the closing-line and price-path archives and
+   * /v1/racing/horses/form carry — the key that joins a horse across meetings, where
+   * `runner_ref` joins one entry to one meeting.
+   */
+  horse_ref?: string | null;
+  /** Id of the /v1/racing/results row this run came from. */
+  result_id?: string | null;
+}
+
+export interface HorseRunsOut {
+  /** The horse's name as our results spell it. */
+  horse: string;
+  /** The identity the runs were grouped on (letters and digits). */
+  name_key: string;
+  /**
+   * `name_key` as the identifier every thoroughbred surface publishes: `pe:<name_key>`. Pass it
+   * back here, or to /v1/racing/horses/form, and read it off /v1/racing/results runners and
+   * placings, the live board and the closing-line and price-path archives to gather one horse
+   * across meetings.
+   */
+  horse_ref?: string | null;
+  /**
+   * Every Racing Australia horsecode our results published under this name, sorted. Several is
+   * normal, not an error — see `runs[].runner_ref`.
+   */
+  runner_refs: string[];
+  /** Runs held for this horse since `source.coverage_from`; `runs` is the newest `limit` of them. */
+  runs_total: number;
+  runs: HorseRunRow[];
+  /** Over EVERY held run, not just the ones returned. */
+  stats: HorseRunsStats;
+  source: RunsSourceBlock;
+}
+
+export interface HorseRunsStats {
+  /**
+   * Runs with status `ran` — scratchings are excluded from every figure here, which is why
+   * `starts` can be lower than `runs_total`.
+   */
+  starts: number;
+  wins: number;
+  /** Finishes in the first three, wins included. */
+  places: number;
+  win_pct: number;
+  place_pct: number;
 }
 
 export interface HorseSource {
@@ -722,6 +1050,27 @@ export interface NextRaceOut {
   stale_bookmakers?: string[];
   cached?: boolean | null;
   cache_age_seconds?: number | null;
+}
+
+export interface OverageIn {
+  /**
+   * true lets this account run past its monthly allowance, up to the ceiling, and be invoiced
+   * for the excess. false restores the hard 402 at the allowance.
+   */
+  enabled: boolean;
+}
+
+export interface OverageOut {
+  enabled: boolean;
+  eligible: boolean;
+  rate_per_1000_cents: number;
+  max_credits: number;
+  ceiling: number;
+  credits_over_this_period: number;
+  estimated_cents_this_period: number;
+  plan: string;
+  credits_limit: number;
+  credits_used: number;
 }
 
 export interface PremiershipOut {
@@ -977,28 +1326,35 @@ export interface RaceResultOut {
    */
   status_note?: string | null;
   /**
-   * The placegetters: {position, number, name, win_price, place_price, sp, sp_note}. `win_price`
-   * and `place_price` are the SETTLING BOOKMAKER'S FIXED prices. `sp` is the OFFICIAL STARTING
-   * PRICE as a decimal return on a $1 stake (4.6 means $4.60), null where it is unknown — never
-   * 0. It is the settling market's own price, not our consensus and not a bookmaker's fixed
-   * price: greyhound SP comes from the official Topaz feed, thoroughbred SP from the Racing
-   * Australia results table, and HARNESS SP IS ALWAYS NULL — no source we hold publishes it.
-   * `sp_note` carries Racing Australia's favouritism marker on thoroughbred runners ('F'
-   * favourite, 'EF' equal favourite) and is null everywhere else. Coverage RE-MEASURED
-   * 2026-09-08 over the whole retained store, counting only rows whose `status` is `ran` (a
-   * barrier scratching is not a starter and its price is not in this denominator): 99.8% of
-   * greyhound starters carry `sp` (14,540 of 14,568) and 88.6% of thoroughbred starters do
-   * (2,105 of 2,375). The Racing Australia block that held thoroughbred SP at 0% when this was
-   * last measured on 2026-09-03 has lifted and the collector has been landing meetings since. A
-   * null `sp` is unknown, never zero — RA prints no SP at all on some rows. On placings, `sp` is
-   * copied from the matching `runners` entry when the response is built, so the two can never
-   * disagree. On a race with no `runners` payload the `sp` and `sp_note` KEYS ARE ABSENT from
-   * each placing — not present and null. The copy step is what creates them and it is skipped
-   * when there is nothing to copy from, so a schema-validating consumer sees a different object
-   * shape, not a null: read them with `.get()`. The keys are deliberately NOT normalised in,
-   * because adding them here would change the shipped payload of every COMPLETE race too, and
-   * nothing may move under a customer mid-integration. `field_status` tells you which case you
-   * are in before you look.
+   * The placegetters: {position, number, name, win_price, place_price, sp, sp_note, horse_ref}.
+   * `win_price` and `place_price` are the SETTLING BOOKMAKER'S FIXED prices. `horse_ref` (added
+   * 2026-09-21) is the same `pe:<name>` horse identity the `runners` entries carry, derived at
+   * serve time from the name on the placing and present on every placing — null off
+   * thoroughbred. It is the key that joins this placing to the same horse on another meeting;
+   * `runner_ref` on the matching `runners` entry is Racing Australia's per-MEETING entry code
+   * and will not. `sp` is the OFFICIAL STARTING PRICE as a decimal return on a $1 stake (4.6
+   * means $4.60), null where it is unknown — never 0. It is the settling market's own price, not
+   * our consensus and not a bookmaker's fixed price: thoroughbred SP comes from the Racing
+   * Australia results table, greyhound SP from our own collection of published results
+   * (Victorian tracks via FastTrack, every other state via the national results pages, both from
+   * 2026-09-13), and HARNESS SP IS ALWAYS NULL — no source we hold publishes it. `sp_note`
+   * carries Racing Australia's favouritism marker on thoroughbred runners ('F' favourite, 'EF'
+   * equal favourite) and is null everywhere else. Coverage RE-MEASURED 2026-09-08 over the whole
+   * retained store, counting only rows whose `status` is `ran` (a barrier scratching is not a
+   * starter and its price is not in this denominator): 88.6% of thoroughbred starters carry `sp`
+   * (2,105 of 2,375); on the greyhound races collected since 2026-09-13, 2,054 of 2,077
+   * Victorian starters do (98.9%) and 4233 of 4596 of the other states' starters do (92.1%),
+   * both measured 2026-09-20. The Racing Australia block that held thoroughbred SP at 0% when
+   * this was last measured on 2026-09-03 has lifted and the collector has been landing meetings
+   * since. A null `sp` is unknown, never zero — RA prints no SP at all on some rows. On
+   * placings, `sp` is copied from the matching `runners` entry when the response is built, so
+   * the two can never disagree. On a race with no `runners` payload the `sp` and `sp_note` KEYS
+   * ARE ABSENT from each placing — not present and null. The copy step is what creates them and
+   * it is skipped when there is nothing to copy from, so a schema-validating consumer sees a
+   * different object shape, not a null: read them with `.get()`. The keys are deliberately NOT
+   * normalised in, because adding them here would change the shipped payload of every COMPLETE
+   * race too, and nothing may move under a customer mid-integration. `field_status` tells you
+   * which case you are in before you look.
    */
   placings?: Record<string, unknown>[];
   /**
@@ -1032,20 +1388,31 @@ export interface RaceResultOut {
    * completed the race — not just the placegetters — and is null whenever there is none: the
    * runner did not start, or it started and did not finish. `status` is ran | scratched |
    * late_scratching | reserve (an emergency that never got a start). `abnormal` is the official
-   * reason cell, and it carries TWO families that settle in OPPOSITE directions, so read it with
-   * `status` and never alone. (1) A DID-NOT-FINISH reason on a row whose `status` is `ran` —
-   * Fell, PulledUp, Disqualified, TailedOff, StayedInBox: the runner started and simply has no
-   * finishing position, and a bet on it lost. (2) A DID-NOT-START reason on a row whose `status`
-   * is `scratched` — 'SB', Racing Australia's code for scratched at the barrier: the runner was
-   * taken out of the market before the jump, so `position` is null, it is in no `placings`
-   * entry, and bets on it were refunded while the rest of the race was deducted. An 'SB' row may
-   * still carry `sp` — the last price Racing Australia printed for it, kept rather than blanked
-   * because it is a real market fact about the withdrawn runner. It is NOT the basis of the
-   * deduction, and you must never derive one from the other: `sp` comes from RA's results table
-   * while a deduction is struck by the settling bookmaker, and they do not agree. Measured
-   * 2026-09-08 across all five stored 'SB' rows that carry a price, 1/`sp` equals the published
-   * win deduction on NONE of them — Varejao, Sunshine Coast R4 2026-09-06, saddlecloth 5,
-   * withdrawn about 2 minutes 20 before the jump: `sp` 3.70, so 1/3.70 is 0.27 in the dollar,
+   * reason cell, passed through VERBATIM from the source — on AU thoroughbred it is Racing
+   * Australia's own Finish cell whenever that cell is not a number. THERE IS NO CLOSED LIST OF
+   * CODES and you should not write a match statement that assumes one: the source invents them,
+   * and a code nobody here has seen before will reach you unchanged rather than be dropped or
+   * renamed. Everything stored to date, with counts as at 2026-09-14: Fell (101), TailedOff
+   * (32), SB (25), PulledUp (8), FF (1, Rosehill R4 on 2026-09-12), LP (1). Treat `abnormal` as
+   * the authoritative explanation for a missing `position`, and treat an unfamiliar value as a
+   * did-not-finish unless `status` says otherwise — which is exactly what this API does: only
+   * codes PROVEN to mean the runner never left the barrier flip `status` to `scratched`, and
+   * that list currently holds one entry, 'SB'. Anything else stays `ran`, deliberately, because
+   * misreading a starter as a non-starter turns a losing bet into a refund. It carries TWO
+   * families that settle in OPPOSITE directions, so read it with `status` and never alone. (1) A
+   * DID-NOT-FINISH reason on a row whose `status` is `ran` — Fell, PulledUp, Disqualified,
+   * TailedOff, StayedInBox, FF and LP are the ones seen so far: the runner started and simply
+   * has no finishing position, and a bet on it lost. (2) A DID-NOT-START reason on a row whose
+   * `status` is `scratched` — 'SB', Racing Australia's code for scratched at the barrier: the
+   * runner was taken out of the market before the jump, so `position` is null, it is in no
+   * `placings` entry, and bets on it were refunded while the rest of the race was deducted. An
+   * 'SB' row may still carry `sp` — the last price Racing Australia printed for it, kept rather
+   * than blanked because it is a real market fact about the withdrawn runner. It is NOT the
+   * basis of the deduction, and you must never derive one from the other: `sp` comes from RA's
+   * results table while a deduction is struck by the settling bookmaker, and they do not agree.
+   * Measured 2026-09-08 across all five stored 'SB' rows that carry a price, 1/`sp` equals the
+   * published win deduction on NONE of them — Varejao, Sunshine Coast R4 2026-09-06, saddlecloth
+   * 5, withdrawn about 2 minutes 20 before the jump: `sp` 3.70, so 1/3.70 is 0.27 in the dollar,
    * against a published `deductions` row of 0.18 win and 0.15 place; Dubai Dancer, Warrnambool
    * R5: 1/5.50 is 0.18 against a published 0.10. Settle from `deductions`, which is
    * authoritative. None of the five carries a `position` or a `margin`. Telling a barrier
@@ -1057,33 +1424,66 @@ export interface RaceResultOut {
    * barrier it jumped from — RA prints 0 there and we do not pass that sentinel on), and an
    * ordinary scratching carries `sp` null while an 'SB' may carry one. So `abnormal == 'SB'`
    * identifies a barrier scratching; `abnormal` null tells you only that it was not one, not how
-   * early it happened — use `deductions[].scratched_at` for that. On greyhound (Topaz)
-   * `abnormal` is null on every scratching and `status` is the discriminator: the LATE one is
-   * `late_scratching`, an earlier one is `scratched`. So today `late_scratching` is a
-   * greyhound-only value — a thoroughbred barrier scratching does NOT use it — and `scratched`
-   * does not carry identical meaning in the two codes. `deductions` carries `scratched_at` for
-   * either, and is the one cross-code way to see how close to the jump a runner came out.
-   * `dead_heat` is true on each runner sharing a position. `runner_ref` is a STABLE runner
-   * identifier from the official registry (namespaced: ra:<code> thoroughbred, grv:<id>
-   * greyhound) — it persists across meetings, so it is the join key for longitudinal work; null
-   * while a code's registry source is not yet wired. `trainer` and `jockey` come from the same
-   * official results source and may be null where that source is not yet live for the code. `sp`
-   * is the OFFICIAL STARTING PRICE as a decimal return on a $1 stake (4.6 means $4.60), null
-   * where it is unknown — never 0. It is the settling market's own price, not our consensus and
-   * not a bookmaker's fixed price: greyhound SP comes from the official Topaz feed, thoroughbred
-   * SP from the Racing Australia results table, and HARNESS SP IS ALWAYS NULL — no source we
-   * hold publishes it. `sp_note` carries Racing Australia's favouritism marker on thoroughbred
-   * runners ('F' favourite, 'EF' equal favourite) and is null everywhere else. Coverage
-   * RE-MEASURED 2026-09-08 over the whole retained store, counting only rows whose `status` is
-   * `ran` (a barrier scratching is not a starter and its price is not in this denominator):
-   * 99.8% of greyhound starters carry `sp` (14,540 of 14,568) and 88.6% of thoroughbred starters
-   * do (2,105 of 2,375). The Racing Australia block that held thoroughbred SP at 0% when this
-   * was last measured on 2026-09-03 has lifted and the collector has been landing meetings
-   * since. A null `sp` is unknown, never zero — RA prints no SP at all on some rows. Null
-   * `runners` means the full field is not available for this race — never an empty field;
-   * population is rolling out per racing code as our own results collection comes online.
-   * `placings` remains the source for the settling bookmaker's own fixed prices, and now also
-   * carries `sp` copied from here.
+   * early it happened — use `deductions[].scratched_at` for that. On greyhound (our own
+   * collection since 2026-09-13: FastTrack for Victorian tracks, the national results pages for
+   * every other state) `abnormal` is null on every scratching and `status` carries three values:
+   * `ran`, `scratched` (merged in from our own `deductions`, so it never says how late), and
+   * `reserve` for a rug 9/10 reserve that never got a box. `late_scratching` was the retired
+   * interim feed's greyhound-only value — a thoroughbred barrier scratching does NOT use it —
+   * and it is no longer emitted; `scratched` does not carry identical meaning in the two codes.
+   * `deductions` carries `scratched_at` for either, and is the one cross-code way to see how
+   * close to the jump a runner came out. `dead_heat` is true on each runner sharing a position.
+   * IDENTITY, CORRECTED 2026-09-21. `runner_ref` (`ra:<code>`) is Racing Australia's code for
+   * this ENTRY: it joins the runner to RA's form page for that meeting and to our acceptance and
+   * field rows for the same day, and it changes from meeting to meeting — measured 2026-09-21,
+   * 1,450 of the 1,452 horses with two or more runs in our own settled results carried a
+   * DIFFERENT code on every run. It is not a horse identity, and this description said it was
+   * until today. `horse_ref` (`pe:<name>`) is: the registered name folded to letters and digits
+   * (trailing country parenthetical off), the same value on results, the live board, the
+   * closing-line and price-path archives, /v1/racing/horses/form, /v1/racing/horses/runs and the
+   * backfill, and it is the key to join a horse across meetings. It is derived at serve time
+   * from the name on the row, never stored, so every historical row carries it; null on
+   * greyhound and harness runners. On GREYHOUNDS `runner_ref` IS the dog: `grv:<id>` for
+   * Victorian tracks as FastTrack numbers the dog and `grsa:<id>` elsewhere as the national
+   * results pages number it — per-dog registry ids that DO persist across meetings, in two
+   * namespaces, so a dog racing in both is two refs until mapped. `runner_ref` is null while a
+   * code's registry source is not yet wired. `trainer` and `jockey` come from the same official
+   * results source and may be null where that source is not yet live for the code.
+   * GREYHOUND-ONLY, ADDITIVE FROM 2026-09-21, five measured columns the results pages print and
+   * this API used to drop. `first_split_s` is the first sectional in seconds exactly as the
+   * source page printed it, null where the page printed none. `second_split_s` is the second
+   * sectional, and is null on EVERY Victorian run because FastTrack publishes one split and not
+   * two. `weight_kg` is the greyhound's race-day weight in kilograms, null where the page
+   * carries no weight column at all — Western Australian meetings carry none (0 of 36 runner
+   * rows sampled 2026-09-21). `pir` is FastTrack's position-in-running text passed through as a
+   * STRING and never a number ("21" means 2nd at the first mark then 1st at the second),
+   * Victorian runs only and null everywhere else. `grade` is the race's grade in the SOURCE'S
+   * OWN WORDS — "M", "4/5" or "FFA" on the national pages, a race type such as "Tier 3 - Maiden"
+   * on FastTrack — and the two vocabularies are NOT mapped onto each other, so do not compare a
+   * Victorian grade with an interstate one. ⚠️ A STORED FIELD IS NEVER REWRITTEN, so a greyhound
+   * field written before 2026-09-21 carries none of these five keys AT ALL — absent, not null —
+   * and no thoroughbred field carries them in any era: read them with `.get()`. Measured on 46
+   * freshly read race pages on 2026-09-21, a grade appeared on 46/46 races and 362/362 runner
+   * rows, a first split on 288/362 and a weight on 295/362; the rows without them are
+   * overwhelmingly rug 9/10 reserves, which never started and for which the page prints nothing.
+   * `sp` is the OFFICIAL STARTING PRICE as a decimal return on a $1 stake (4.6 means $4.60),
+   * null where it is unknown — never 0. It is the settling market's own price, not our consensus
+   * and not a bookmaker's fixed price: thoroughbred SP comes from the Racing Australia results
+   * table, greyhound SP from our own collection of published results (Victorian tracks via
+   * FastTrack, every other state via the national results pages, both from 2026-09-13), and
+   * HARNESS SP IS ALWAYS NULL — no source we hold publishes it. `sp_note` carries Racing
+   * Australia's favouritism marker on thoroughbred runners ('F' favourite, 'EF' equal favourite)
+   * and is null everywhere else. Coverage RE-MEASURED 2026-09-08 over the whole retained store,
+   * counting only rows whose `status` is `ran` (a barrier scratching is not a starter and its
+   * price is not in this denominator): 88.6% of thoroughbred starters carry `sp` (2,105 of
+   * 2,375); on the greyhound races collected since 2026-09-13, 2,054 of 2,077 Victorian starters
+   * do (98.9%) and 4233 of 4596 of the other states' starters do (92.1%), both measured
+   * 2026-09-20. The Racing Australia block that held thoroughbred SP at 0% when this was last
+   * measured on 2026-09-03 has lifted and the collector has been landing meetings since. A null
+   * `sp` is unknown, never zero — RA prints no SP at all on some rows. Null `runners` means the
+   * full field is not available for this race — never an empty field; AU thoroughbred and AU
+   * greyhound races carry one. `placings` remains the source for the settling bookmaker's own
+   * fixed prices, and now also carries `sp` copied from here.
    */
   runners?: Record<string, unknown>[] | null;
   /**
@@ -1095,35 +1495,38 @@ export interface RaceResultOut {
    * this race has not been yet; `field_note` names the UTC instant by which it will have run.
    * `overdue`: that pass has been and gone without writing a field, but the collector still
    * selects this row as a candidate and keeps re-attempting it — this state is NOT terminal. For
-   * AU greyhound the Topaz enricher re-reads every field-less row on each daily run for ten days
-   * after the race (its own LOOKBACK_DAYS); for AU thoroughbred a bounded re-fetch reaches six
-   * days but is run by hand rather than on a schedule. Most rows that reach `overdue` stay null,
-   * so do not build on a field arriving — but do not write the race off either, and `field_note`
-   * gives the horizon. `unavailable`: no scheduled pass still selects this row. Its collector's
-   * own candidate window closed at the instant in `field_note` and no field was written — the
-   * pass either never matched the race or refused an ambiguous match, which it does rather than
-   * write another race's field. `unsupported`: no collector has ever existed for this
-   * category/country — AU harness, NZ thoroughbred and NZ harness, 1,254 of the 5,577 stored
-   * results on 2026-09-10, plus any other country that appears because an AU book listed the
-   * meeting — and no amount of waiting will produce one. `not_applicable`: the race did not run
-   * (abandoned, postponed or transferred) and carries no field, so there is nothing to collect.
-   * TRANSITIONS, stated explicitly because acting on the wrong one costs you data. The scheduled
-   * progression is pending -> overdue -> unavailable, one direction only. It is bounded at every
-   * step by a collector's own window rather than by hope: a race can sit
-   * matched-and-never-resulted forever (The Gardens, 2026-09-05, 12 races), and an open-ended
-   * `pending` would have you polling it forever. Any of those three becomes `complete` the
-   * moment a field is written, AND THAT INCLUDES `unavailable` — nothing un-writes a `runners`
-   * array, so a collector re-run by hand, a widened window or a late upstream publication can
-   * still fill a row we have stopped scheduling passes for. So `unavailable` means 'nothing
-   * further is scheduled', never 'this can never arrive'; if you reconcile, re-read rather than
-   * caching it as final. `unsupported` and `not_applicable` are properties of the racing code
-   * and of the race itself, not of a schedule, and do not change on their own.
+   * AU greyhound the hourly pass for its state (FastTrack for Victoria, the national results
+   * pages elsewhere) re-reads every field-less race inside its seven-day window; for AU
+   * thoroughbred a bounded re-fetch reaches six days but is run by hand rather than on a
+   * schedule. Most rows that reach `overdue` stay null, so do not build on a field arriving —
+   * but do not write the race off either, and `field_note` gives the horizon. `unavailable`: no
+   * scheduled pass still selects this row. Its collector's own candidate window closed at the
+   * instant in `field_note` and no field was written — the pass either never matched the race or
+   * refused an ambiguous match, which it does rather than write another race's field.
+   * `unsupported`: no collector has ever existed for this category/country — AU harness, NZ
+   * thoroughbred and NZ harness, 1,254 of the 5,577 stored results on 2026-09-10, plus any other
+   * country that appears because an AU book listed the meeting — and no amount of waiting will
+   * produce one. `not_applicable`: the race did not run (abandoned, postponed or transferred)
+   * and carries no field, so there is nothing to collect. TRANSITIONS, stated explicitly because
+   * acting on the wrong one costs you data. The scheduled progression is pending -> overdue ->
+   * unavailable, one direction only. It is bounded at every step by a collector's own window
+   * rather than by hope: a race can sit matched-and-never-resulted forever (The Gardens,
+   * 2026-09-05, 12 races), and an open-ended `pending` would have you polling it forever. Any of
+   * those three becomes `complete` the moment a field is written, AND THAT INCLUDES
+   * `unavailable` — nothing un-writes a `runners` array, so a collector re-run by hand, a
+   * widened window or a late upstream publication can still fill a row we have stopped
+   * scheduling passes for. So `unavailable` means 'nothing further is scheduled', never 'this
+   * can never arrive'; if you reconcile, re-read rather than caching it as final. `unsupported`
+   * and `not_applicable` are properties of the racing code and of the race itself, not of a
+   * schedule, and do not change on their own.
    */
   field_status?: string;
   /**
-   * Which collector owns `runners` for this race: `racing_australia` (AU thoroughbred), `topaz`
-   * (AU greyhound), or null where no collector exists. Set on `pending`, `overdue`,
-   * `unavailable` and `complete` rows alike — it names who WOULD fill the field, not who did.
+   * Which collector owns `runners` for this race: `racing_australia` (AU thoroughbred),
+   * `fasttrack` (AU greyhound at Victorian tracks) and `grsa` (AU greyhound everywhere else),
+   * the last two our own collection, or null where no collector exists. Set on `pending`,
+   * `overdue`, `unavailable` and `complete` rows alike — it names who WOULD fill the field, not
+   * who did.
    */
   field_source?: string | null;
   /**
@@ -1331,6 +1734,22 @@ export interface ResultsCoverageOut {
   field_scope: string;
 }
 
+export interface RewardIn {
+  /** `cash` or `credits`. */
+  reward_type: string;
+  /**
+   * Where a cash remittance should go, if it differs from the account email. Ignored for
+   * `credits`.
+   */
+  payout_email?: string | null;
+  /**
+   * Requested referral code, first call only. 3-24 characters, lowercase letters, digits and
+   * hyphens. Ignored once a code has been issued — a code that changes is a dead link on
+   * somebody's blog.
+   */
+  code?: string | null;
+}
+
 export interface RunPIR {
   /** Metres from the finish, e.g. 800. */
   at_m: number;
@@ -1340,20 +1759,67 @@ export interface RunPIR {
 export interface RunPlacegetter {
   position: number;
   name: string;
-  /** That horse's own stable ra: code — walkable straight back into this endpoint. */
+  /**
+   * That horse's own ra: code for that meeting — walkable straight back into this endpoint,
+   * though it is the entry code and not a horse identity.
+   */
   runner_ref?: string | null;
   weight_kg?: number | null;
 }
 
-export interface SourceBlock {
+export interface RunsSourceBlock {
+  /**
+   * Where the data comes from: our own collection of published AU thoroughbred results (Racing
+   * Australia's results pages, read hourly by our results collector), flattened to one row per
+   * horse per race and refreshed hourly. Not Racing Australia's form page — that is
+   * /v1/racing/horses/form.
+   */
   feed?: string;
   region?: string;
   sport?: string;
-  coverage_from: string;
-  /** Meeting date of the latest run held, i.e. how far the last sync got. */
+  /**
+   * The first complete card in the store. A horse's record here starts here — it is not a
+   * career.
+   */
+  coverage_from?: string;
+  /** Sydney date of the latest race in the store. */
   coverage_to?: string | null;
-  /** UTC timestamp of the last Topaz sync into this store. */
-  synced_at?: string | null;
+  /**
+   * Which of our collectors can contribute a run. AU thoroughbred results come from one: the
+   * Racing Australia results pages.
+   */
+  collectors?: string[];
+  /** The store is rebuilt from our own results at :59 each hour, after the results pass. */
+  refreshed_hourly?: boolean;
+}
+
+export interface SourceBlock {
+  /**
+   * Where the data comes from: our own collection of published AU greyhound results, Victorian
+   * tracks via FastTrack (runner_ref grv:) and every other state via the national results pages
+   * (runner_ref grsa:). Runs on or after `results_from` are races we settled ourselves; earlier
+   * runs are the same pages read back by our history collector. Refreshed hourly.
+   */
+  feed?: string;
+  region?: string;
+  sport?: string;
+  /** Sydney date of the OLDEST run in the store. A dog's record here starts here. */
+  coverage_from?: string;
+  /**
+   * Sydney date our own settled results begin. A run on or after it has `origin: results` and a
+   * `result_id` that joins to /v1/racing/results; an earlier one has `origin: history` and does
+   * not.
+   */
+  results_from?: string;
+  /** Sydney date of the latest race in the store. */
+  coverage_to?: string | null;
+  /**
+   * Which of our collectors can contribute a run: `fasttrack` = Victorian tracks, `grsa` = every
+   * other state.
+   */
+  collectors?: string[];
+  /** The store is rebuilt from our results at :58 each hour, after both collectors have written. */
+  refreshed_hourly?: boolean;
 }
 
 export interface SplitRecord {
@@ -1408,6 +1874,88 @@ export interface SportsArbOut {
   selections: Record<string, unknown>[];
 }
 
+export interface TeamKeyIn {
+  /**
+   * What this key is for — 'results worker', 'Jo's laptop'. Shown in the pool view and in your
+   * usage breakdown.
+   */
+  label: string;
+  /**
+   * Optional. The most credits THIS key may spend per month, hard, inside the account's shared
+   * pool — between 1 and the plan's own monthly allowance. Omit it (or send null) and the key
+   * may spend the whole pool. Caps reset with the pool on the 1st.
+   */
+  monthly_cap?: number | null;
+}
+
+export interface TeamKeyListOut {
+  plan: string;
+  allowance: number;
+  keys_in_use: number;
+  pool_credits_used: number;
+  pool_credits_limit: number;
+  pool_credits_remaining: number;
+  max_monthly_cap?: number;
+  primary: TeamKeyOut;
+  team: TeamKeyOut[];
+}
+
+export interface TeamKeyMintOut {
+  key_id: string;
+  /**
+   * The team key. Shown ONCE; it is stored hashed and cannot be recovered — only revoked and
+   * re-minted.
+   */
+  api_key: string;
+  label: string;
+  plan: string;
+  /** Keys this account may hold, primary included. */
+  allowance: number;
+  keys_in_use: number;
+  pool_credits_limit: number;
+  pool_credits_used: number;
+  monthly_cap?: number | null;
+  /** The largest cap this plan accepts — its own monthly allowance. */
+  max_monthly_cap?: number;
+}
+
+export interface TeamKeyOut {
+  key_id: string;
+  key_hint: string;
+  label: string | null;
+  plan: string;
+  created_at?: string | null;
+  last_used_at?: string | null;
+  period_calls?: number;
+  period_credits?: number;
+  /** This key's hard per-month credit cap, or null for no cap. */
+  monthly_cap?: number | null;
+  /**
+   * Credits charged against this key's own counter this period. That is the number the cap is
+   * checked against; it stays 0 on an uncapped team key, whose spending is only ever charged to
+   * the pool row. Use period_credits for what an uncapped key has spent.
+   */
+  key_credits_used?: number;
+}
+
+/**
+ * Both fields are optional; only the ones PRESENT in the body are written. `monthly_cap: null`
+ * is meaningful (remove the cap) and must not read as "unchanged", so the handler asks
+ * model_fields_set which keys the caller actually sent rather than inferring intent from a
+ * None that pydantic would produce either way.
+ */
+export interface TeamKeyPatchIn {
+  /** New label for this key. Omit to leave it alone. */
+  label?: string | null;
+  /**
+   * Optional. The most credits THIS key may spend per month, hard, inside the account's shared
+   * pool — between 1 and the plan's own monthly allowance. Omit it (or send null) and the key
+   * may spend the whole pool. Caps reset with the pool on the 1st. Send null to REMOVE an
+   * existing cap; omit the field entirely to leave the cap as it is.
+   */
+  monthly_cap?: number | null;
+}
+
 export interface TrackConditionsOut {
   /** Meeting day, Australia/Sydney calendar date. */
   date: string;
@@ -1415,10 +1963,21 @@ export interface TrackConditionsOut {
   note: string;
 }
 
-export interface TrainerRef {
-  /** Topaz trainerId. Stable across meetings. */
-  id?: number | null;
-  name?: string | null;
+export interface UpstreamBlock {
+  /**
+   * `ok` when Racing Australia is answering form reads, `walled` when it is serving its
+   * bot-protection challenge to every fresh read and nothing can be collected.
+   */
+  state: string;
+  /**
+   * UTC time of the first refusal in the current streak, null when `state` is `ok`. This is the
+   * field that tells you a stalled queue is hours old rather than minutes.
+   */
+  walled_since?: string | null;
+  /** How long the current streak has run, in hours, null when `state` is `ok`. */
+  walled_hours?: number | null;
+  /** One sentence saying what that means for this job, in plain words. */
+  note: string;
 }
 
 export interface UsageOut {
@@ -1441,6 +2000,9 @@ export interface UsageOut {
   recent_activity?: Record<string, unknown>[];
   usage_by_endpoint_period?: Record<string, unknown>[];
   recent_activity_period?: Record<string, unknown>[];
+  pool?: Record<string, unknown> | null;
+  overage?: Record<string, unknown>;
+  credits_remaining_with_overage?: number;
   plans?: Record<string, Record<string, unknown>>;
 }
 

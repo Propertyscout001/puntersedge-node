@@ -33,6 +33,7 @@ SKIP = {
     "SelectionIn", "SportEventIn", "SignupRequest",
     "HTTPValidationError", "ValidationError",  # hand-written in errors.ts, richer there
     "Problem",  # hand-written in errors.ts, where the error classes that carry it live
+    "LoginRequestIn", "LoginExchangeIn",  # the website's console sign-in flow, not an SDK surface
 }
 
 RESERVED = {"from", "function", "class", "default", "in", "new", "delete", "for"}
