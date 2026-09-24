@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1 — 2026-09-24
+
+Documentation only. The free tier is 3,000 credits a month, not 1,500; the README said 1,500.
+No code changes.
+
 ## 1.2.0 — 2026-09-21
 
 Methods for every customer endpoint the API added on 20–21 September. No behaviour changes to

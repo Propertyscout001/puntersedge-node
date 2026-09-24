@@ -68,7 +68,7 @@ endorsed by, or an agent of any bookmaker.
 
 ## Get a key
 
-1. Sign up at <https://puntersedge.online/api>. Free tier, no card: 1,500 credits/month, 30 requests/minute.
+1. Sign up at <https://puntersedge.online/api>. Free tier, no card: 3,000 credits/month, 30 requests/minute.
 2. Click the verification link. The key is shown on screen and emailed to you.
 3. `export PUNTERSEDGE_API_KEY=...`
 
