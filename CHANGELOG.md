@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0
+
+Conditional requests, on by default. Every 200 from the API carries an `ETag`; the client now
+remembers it (with the body) per URL and sends `If-None-Match` on the next identical GET. An
+unchanged answer comes back `304 Not Modified` for 0 credits and no body, and the client returns
+the remembered body, so the call reads exactly as before. `withCredits()` reports it as
+`notModified: true`. Up to 32 distinct requests are remembered. Pass
+`new PuntersEdge({ conditionalRequests: false })` to switch it off. POST is never conditional.
+
 ## 1.2.1 — 2026-09-24
 
 Documentation only. The free tier is 3,000 credits a month, not 1,500; the README said 1,500.

@@ -408,3 +408,20 @@ users needs attribution on Plus and above, and redistribution needs Platform. Se
 Odds data is provided for informational and analytical use only. This is not betting advice and no
 return of any kind is claimed or implied. 18+ only. Gambling can be addictive — please gamble
 responsibly. Gambling Help: 1800 858 858.
+
+## Conditional requests (1.3.0)
+
+Every 200 from the API carries an `ETag`. The client remembers it per URL and sends it back as
+`If-None-Match` on the next identical GET; an unchanged answer is a `304 Not Modified` for
+**0 credits** and no body, and the call returns the remembered body, so your code reads exactly
+as before. A poller re-reading an unchanged race board stops paying for it.
+
+```ts
+const board = await pe.racing.nextToGo({ numRaces: 200, country: "AU" });
+// ... 30 seconds later
+const again = await pe.racing.nextToGo({ numRaces: 200, country: "AU" });
+pe.lastNotModified; // true when the board had not changed: that call cost 0 credits
+```
+
+`withCredits()` reports it as `notModified: true`. Up to 32 distinct requests are remembered.
+`new PuntersEdge({ conditionalRequests: false })` switches it off; POST is never conditional.

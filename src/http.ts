@@ -32,7 +32,18 @@ export interface Result<T> {
   credits?: Credits;
   /** Raw response headers, for anything this SDK does not model. */
   headers: Headers;
+  /**
+   * True when the API answered `304 Not Modified` to this client's `If-None-Match` and `data`
+   * is the body remembered from the previous identical GET. Such a call costs 0 credits.
+   */
+  notModified?: boolean;
 }
+
+/** One remembered response for conditional requests. */
+export interface EtagEntry { etag: string; text: string }
+
+/** Distinct GET URLs whose ETag and body a client remembers. */
+export const ETAG_CACHE_MAX = 32;
 
 export interface RequestOptions {
   /** Abort this call. Composed with the client's `timeoutMs`, whichever fires first. */
@@ -55,6 +66,12 @@ export interface TransportConfig {
   userAgent: string;
   fetch: typeof globalThis.fetch;
   onCredits?: (credits: Credits) => void;
+  /**
+   * Conditional requests (1.3.0). When present, every JSON GET remembers the `ETag` the API
+   * returned for its exact URL and sends it back as `If-None-Match` next time; a 304 is served
+   * from the remembered body for 0 credits. Undefined switches the behaviour off.
+   */
+  etags?: Map<string, EtagEntry>;
 }
 
 /**
@@ -232,6 +249,14 @@ export async function request<T>(
   };
   if (config.apiKey) headers["X-API-Key"] = config.apiKey;
   if (jsonBody !== undefined) headers["Content-Type"] = "application/json";
+  // Conditional GET: only JSON reads, only when the client keeps an ETag map, and never over
+  // a validator the caller supplied themselves.
+  const conditional =
+    method === "GET" && config.etags !== undefined && options.responseType !== "binary";
+  if (conditional && !headers["If-None-Match"]) {
+    const held = config.etags!.get(url);
+    if (held) headers["If-None-Match"] = held.etag;
+  }
 
   const { signal, done } = withTimeout(
     options.signal,
@@ -260,6 +285,23 @@ export async function request<T>(
   // where a caller most needs it.
   if (credits && config.onCredits) config.onCredits(credits);
 
+  if (res.status === 304 && conditional) {
+    const held = config.etags!.get(url);
+    if (held) {
+      let data: unknown = held.text;
+      try {
+        data = JSON.parse(held.text);
+      } catch {
+        /* a text body (CSV) is returned as text, exactly as a 200 would be */
+      }
+      return { data: data as T, credits, headers: res.headers, notModified: true };
+    }
+    // A 304 for a body this client no longer holds: nothing to serve, so surface it.
+    throw new APIError(`${res.status} Not Modified, but no remembered body for ${path}; call again.`, {
+      status: res.status, path, headers: res.headers,
+    });
+  }
+
   if (!res.ok) throw toError(res, path, await readBody(res));
 
   // 204 and an empty 200 (DELETE /v1/webhooks/{id}) have no body to parse.
@@ -271,6 +313,20 @@ export async function request<T>(
   const body = await readBody(res);
   if (body.text === undefined || body.text === "") {
     return { data: undefined as T, credits, headers: res.headers };
+  }
+  if (conditional) {
+    const tag = res.headers.get("ETag");
+    if (tag) {
+      // Map keeps insertion order: delete-then-set makes this most-recently-used, and the
+      // first key is the oldest when the bound is reached.
+      config.etags!.delete(url);
+      config.etags!.set(url, { etag: tag, text: body.text });
+      while (config.etags!.size > ETAG_CACHE_MAX) {
+        const oldest = config.etags!.keys().next().value;
+        if (oldest === undefined) break;
+        config.etags!.delete(oldest);
+      }
+    }
   }
   if (!("json" in body)) {
     // A 2xx that is not JSON: the CSV format on the archive endpoints comes back this way.

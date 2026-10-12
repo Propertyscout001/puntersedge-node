@@ -34,7 +34,7 @@ import type {
   VenueOut, WebhookDeliveryResponse, WebhookResponse,
 } from "./types.generated.js";
 
-export const VERSION = "1.2.0";
+export const VERSION = "1.3.0";
 
 /** Default base URL. The API is also reachable at `https://puntersedge.online/api`. */
 export const DEFAULT_BASE_URL = "https://api.puntersedge.online";
@@ -900,6 +900,13 @@ export interface PuntersEdgeOptions {
   fetch?: typeof globalThis.fetch;
   /** Appended to the SDK's own User-Agent, so your traffic is identifiable in support. */
   userAgent?: string;
+  /**
+   * Conditional requests, on by default (1.3.0). Every 200 carries an `ETag`; the client
+   * remembers it per URL and sends `If-None-Match` on the next identical GET. An unchanged
+   * answer is a `304` for 0 credits and is returned from the remembered body, so a poller
+   * re-reading an unchanged race board stops paying for it. `false` switches it off.
+   */
+  conditionalRequests?: boolean;
 }
 
 /**
@@ -936,6 +943,15 @@ export class PuntersEdge {
   // and so would any error reporter that serialises the object. `#config` is unreachable from
   // outside the class and invisible to enumeration.
   readonly #config: TransportConfig;
+  #lastNotModified = false;
+
+  /**
+   * True when the most recent call was answered `304 Not Modified` and served from the body
+   * remembered by this client (0 credits). A getter, so it is not an enumerable field.
+   */
+  get lastNotModified(): boolean {
+    return this.#lastNotModified;
+  }
 
   constructor(options: PuntersEdgeOptions | string = {}) {
     const opts: PuntersEdgeOptions =
@@ -964,6 +980,7 @@ export class PuntersEdge {
         this.credits = credits;
         opts.onCredits?.(credits);
       },
+      etags: opts.conditionalRequests === false ? undefined : new Map(),
     };
   }
 
@@ -974,9 +991,11 @@ export class PuntersEdge {
    * const { data, credits } = await pe.withCredits((p) => p.racing.nextToGo());
    * ```
    */
-  async withCredits<T>(call: (pe: this) => Promise<T>): Promise<{ data: T; credits?: Credits }> {
+  async withCredits<T>(
+    call: (pe: this) => Promise<T>,
+  ): Promise<{ data: T; credits?: Credits; notModified?: boolean }> {
     const data = await call(this);
-    return { data, credits: this.credits };
+    return { data, credits: this.credits, notModified: this.#lastNotModified };
   }
 
   /** Escape hatch: any endpoint, including ones added after this SDK was published. */
@@ -998,12 +1017,16 @@ export class PuntersEdge {
   ): Promise<T> {
     const { params, request: req } = split(options);
     if (extraHeaders) req.headers = { ...extraHeaders, ...req.headers };
-    return this.raw<T>("GET", path, params, undefined, req).then((r) => r.data);
+    return this.raw<T>("GET", path, params, undefined, req).then((r) => {
+      this.#lastNotModified = r.notModified === true;
+      return r.data;
+    });
   }
 
   /** @internal */
   post<T>(path: string, body?: unknown, options?: CallOptions): Promise<T> {
     const { request: req } = split(options);
+    this.#lastNotModified = false;
     return this.raw<T>("POST", path, undefined, body, req).then((r) => r.data);
   }
 

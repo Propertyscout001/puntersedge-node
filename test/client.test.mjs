@@ -574,3 +574,65 @@ test("updateTeamKey goes over the wire as PATCH with the JSON body, null include
   assert.equal(capture.init.body, JSON.stringify({ monthly_cap: null }));
   assert.equal(new URL(capture.url).pathname, "/v1/keys/team/k1");
 });
+
+
+// ── conditional requests (1.3.0) ──────────────────────────────────────────────────────────
+
+/** A stateful fake: a 200 with an ETag, then a 304 whenever the validator comes back. */
+function conditionalStub(capture) {
+  const tag = '"ntg-abc"';
+  const board = [{ race_id: "r1", venue: "Eagle Farm" }];
+  capture.calls = [];
+  return async (url, init) => {
+    const h = init?.headers ?? {};
+    capture.calls.push({ url, inm: h["If-None-Match"] });
+    if (h["If-None-Match"] === tag) {
+      return new Response(null, { status: 304, headers: { ETag: tag, "X-Credits-Cost": "0" } });
+    }
+    return new Response(JSON.stringify(board), {
+      status: 200,
+      headers: { "Content-Type": "application/json", ETag: tag, "X-Credits-Cost": "2",
+                 "X-Credits-Used": "10", "X-Credits-Remaining": "2990", "X-Credits-Limit": "3000" },
+    });
+  };
+}
+
+test("conditional requests: the second identical GET sends If-None-Match and is served from the remembered body", async () => {
+  const capture = {};
+  const pe = new PuntersEdge({ apiKey: KEY, fetch: conditionalStub(capture) });
+  const first = await pe.racing.nextToGo({ numRaces: 5 });
+  const second = await pe.racing.nextToGo({ numRaces: 5 });
+  assert.deepEqual(first, second);
+  assert.equal(capture.calls[0].inm, undefined);
+  assert.equal(capture.calls[1].inm, '"ntg-abc"');
+  const r = await pe.withCredits((p) => p.racing.nextToGo({ numRaces: 5 }));
+  assert.equal(r.notModified, true);
+  assert.equal(pe.lastNotModified, true);
+  assert.deepEqual(r.data, first);
+  // a different query is a different request: no validator for it yet
+  await pe.racing.nextToGo({ numRaces: 6 });
+  assert.equal(capture.calls[3].inm, undefined);
+});
+
+test("conditional requests: the remembered body is a fresh object each time", async () => {
+  const capture = {};
+  const pe = new PuntersEdge({ apiKey: KEY, fetch: conditionalStub(capture) });
+  const a = await pe.racing.nextToGo();
+  const b = await pe.racing.nextToGo();
+  assert.notEqual(a, b);
+  b[0].venue = "mutated";
+  assert.equal((await pe.racing.nextToGo())[0].venue, "Eagle Farm");
+});
+
+test("conditional requests: off when asked, and never on POST", async () => {
+  const capture = {};
+  const pe = new PuntersEdge({ apiKey: KEY, fetch: conditionalStub(capture), conditionalRequests: false });
+  await pe.racing.nextToGo();
+  await pe.racing.nextToGo();
+  assert.ok(capture.calls.every((c) => c.inm === undefined));
+  const capture2 = {};
+  const pe2 = new PuntersEdge({ apiKey: KEY, fetch: conditionalStub(capture2) });
+  await pe2.post("/v1/racing/clv", { bets: [] });
+  await pe2.post("/v1/racing/clv", { bets: [] });
+  assert.ok(capture2.calls.every((c) => c.inm === undefined));
+});

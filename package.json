@@ -1,6 +1,6 @@
 {
   "name": "puntersedge",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Australian odds API client for TypeScript and JavaScript — horse, greyhound and harness racing odds plus AFL, NRL and other sports odds from 14 Australian bookmakers, with best-price comparison, results, form, market movement and signed webhooks. AU and NZ.",
   "keywords": [
     "odds-api",
