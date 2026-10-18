@@ -29,7 +29,12 @@ console.log(`${pe.credits?.remaining} credits left`);
 ```
 
 - **No dependencies.** Standard `fetch` only.
-- **Runs anywhere.** Node 18+, Deno, Bun, Cloudflare Workers, Vercel Edge, browsers. ESM and CommonJS.
+- **Runs on your server or at the edge.** Node 18+, Deno, Bun, Cloudflare Workers, Vercel Edge. ESM and
+  CommonJS. It also runs in a browser, but an API key must never ship to one: anyone who opens the page
+  can read it, and the [terms](https://puntersedge.online/terms) forbid it. To show prices on a public
+  website, call the API from your own server and send the page only what it needs
+  ([how](https://puntersedge.online/developers/getting-started#public-website)), or embed the
+  [widget](https://puntersedge.online/widgets).
 - **Fully typed.** Every response type is generated from the live OpenAPI document, so the types
   cannot quietly drift from the server.
 - **Errors are typed.** A 402 is not a 429 is not a 422, and each carries what you need to act on it.
@@ -235,7 +240,8 @@ from a broken feed.
 Creating a subscription needs the Standard plan or above.
 
 > `verifyWebhookSignature` uses WebCrypto via `globalThis.crypto`, so it works unchanged in
-> Deno, Bun, Workers and browsers. **Node 18 does not expose `globalThis.crypto`** — on 18,
+> Deno, Bun and Workers. Verify on the server that receives the webhook: the secret, like the API key,
+> never belongs in browser code. **Node 18 does not expose `globalThis.crypto`** — on 18,
 > pass it in: `import { webcrypto } from "node:crypto"` then
 > `verifyWebhookSignature({ body, signature, secret, crypto: webcrypto })`. Node 19+ needs
 > nothing. Without it the call throws with that instruction rather than returning a wrong
