@@ -43,12 +43,13 @@ console.log(`${pe.credits?.remaining} credits left`);
 
 These numbers are recomputed every 30 minutes and published at
 [puntersedge.online/coverage-report.json](https://puntersedge.online/coverage-report.json). Read that
-rather than this paragraph; the snapshot below was measured **14 Sep 2026 23:06 UTC**.
+rather than this paragraph; the racing line below was measured **22 Oct 2026 04:40 UTC**, the
+sports lines **14 Sep 2026 23:06 UTC**.
 
-- **14 Australian bookmakers on racing** — the keys the API returns are `tab`, `tabtouch`,
+- **15 Australian bookmakers on racing** — the keys the API returns are `tab`, `tabtouch`,
   `betdeluxe`, `betr_au`, `pointsbetau`, `betright`, `playup`, `palmerbet`, `unibet`, `neds`,
-  `ladbrokes_au`, `sportsbet`, `betgold`, `boostbet`. Median books quoting an AU race: **14**
-  (mean 13.18) over 1,539 races in the 7-day window.
+  `ladbrokes_au`, `sportsbet`, `bet365`, `betgold`, `boostbet`. Median books quoting an AU race:
+  **15** (mean 13.85) over 1,558 races in the 7-day window.
 - **Racing** — AU thoroughbred, harness and greyhound; NZ thoroughbred and harness. There are **no
   NZ greyhounds**. Races in other countries show up only because an AU book lists the meeting: the
   median there is one book, which is not coverage.
